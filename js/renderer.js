@@ -127,8 +127,10 @@ export class Renderer {
     this.updateEffects(dt);
     ctx.clearRect(0, 0, W, H);
 
-    const beatPhase = state.beat ? (((now - state.firstBeat) / state.beat) % 1 + 1) % 1 : 0;
-    const pulse = now > 0 ? Math.exp(-beatPhase * state.beat * 7) : 0;
+    // 直前の拍からの経過時間でステージを脈打たせる
+    const beats = state.beats || [];
+    const lastBeat = lastIndexAtOrBefore(beats, now);
+    const pulse = now > 0 && lastBeat >= 0 ? Math.exp(-(now - beats[lastBeat]) * 7) : 0;
 
     this.drawBackground(now, pulse);
     this.drawStage(state, pulse);
@@ -211,13 +213,11 @@ export class Renderer {
     }
 
     // 拍線(小節線は濃く)
-    if (state.beat && state.fallTime) {
-      const first = Math.ceil((state.now - state.firstBeat) / state.beat);
-      for (let b = first; ; b++) {
-        const t = state.firstBeat + b * state.beat;
-        const z = (t - state.now) / state.fallTime;
+    const beats = state.beats || [];
+    if (beats.length && state.fallTime) {
+      for (let b = lastIndexAtOrBefore(beats, state.now) + 1; b < beats.length; b++) {
+        const z = (beats[b] - state.now) / state.fallTime;
         if (z > 1) break;
-        if (t < 0) continue;
         const { y, s } = this.project(z);
         ctx.strokeStyle = b % 4 === 0 ? 'rgba(255, 255, 255, 0.28)' : 'rgba(255, 255, 255, 0.08)';
         ctx.lineWidth = b % 4 === 0 ? 1.5 : 1;
@@ -500,6 +500,17 @@ export class Renderer {
       ctx.fillText('READY', this.cx, midY);
     }
   }
+}
+
+function lastIndexAtOrBefore(sorted, t) {
+  let lo = 0;
+  let hi = sorted.length;
+  while (lo < hi) {
+    const m = (lo + hi) >> 1;
+    if (sorted[m] <= t) lo = m + 1;
+    else hi = m;
+  }
+  return lo - 1;
 }
 
 function roundRect(ctx, x, y, w, h, r) {

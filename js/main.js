@@ -4,7 +4,7 @@ import { Input } from './input.js';
 import { Game, rankOf } from './game.js';
 import { songs, assets, fileId, loadSettings, saveSettings, fallTimeFor, CHART_VERSION } from './storage.js';
 import { downmix } from './chart/analyze.js';
-import { renderDemoSong, encodeWav } from './demo-song.js';
+import { BUILTIN_SONGS, renderSynthSong, encodeWav } from './demo-song.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -100,7 +100,7 @@ async function renderHome() {
   if (!all.length) {
     const li = document.createElement('li');
     li.className = 'empty';
-    li.textContent = 'まだ曲がありません。「曲を追加」か「デモ曲を作る」から始めましょう。';
+    li.textContent = 'まだ曲がありません。「曲を追加」から始めましょう。';
     list.append(li);
     return;
   }
@@ -138,45 +138,11 @@ $('file-input').addEventListener('change', async (e) => {
   await addSong(await file.arrayBuffer(), title, file.type || 'audio/mpeg');
 });
 
-$('demo-song').addEventListener('click', async () => {
-  audio.ensure();
+async function addSong(arrayBuffer, title, type) {
   navigate('loading');
-  setLoading('デモ曲を合成中…', 0.02);
   try {
-    const buffer = await renderDemoSong();
-    await addSong(encodeWav(buffer), 'デモ曲 (128 BPM)', 'audio/wav', true);
-  } catch (err) {
-    console.error(err);
-    toast('デモ曲を作れませんでした');
-    history.back();
-  }
-});
-
-async function addSong(arrayBuffer, title, type, alreadyLoading = false) {
-  if (!alreadyLoading) navigate('loading');
-  setLoading('曲を読み込み中…', 0.03);
-  try {
-    const id = await fileId(arrayBuffer);
-    const existing = await songs.get(id);
-    const buffer = await audio.decode(arrayBuffer);
-    state.buffer = buffer;
-    state.bufferId = id;
-    if (existing && existing.chartVersion === CHART_VERSION) {
-      toast('この曲はもう追加されています');
-      openSong(existing, true);
-      return;
-    }
-    const analysis = await analyzeBuffer(buffer, id);
-    const song = {
-      id,
-      title: existing?.title || title,
-      blob: new Blob([arrayBuffer], { type }),
-      createdAt: existing?.createdAt || Date.now(),
-      best: existing?.best || {},
-      chartVersion: CHART_VERSION,
-      ...analysis,
-    };
-    await songs.put(song);
+    const { song, existed } = await importSong(arrayBuffer, title, type);
+    if (existed) toast('この曲はもう追加されています');
     openSong(song, true);
   } catch (err) {
     console.error(err);
@@ -184,6 +150,94 @@ async function addSong(arrayBuffer, title, type, alreadyLoading = false) {
     replace('home');
     renderHome();
   }
+}
+
+// 音声を読み込んで譜面を作り、ライブラリへ保存する。画面遷移はしない。
+async function importSong(arrayBuffer, title, type, extra = {}) {
+  setLoading('曲を読み込み中…', 0.03);
+  const id = await fileId(arrayBuffer);
+  const existing = await songs.get(id);
+  const buffer = await audio.decode(arrayBuffer);
+  state.buffer = buffer;
+  state.bufferId = id;
+  if (existing && existing.chartVersion === CHART_VERSION) return { song: existing, existed: true };
+  const analysis = await analyzeBuffer(buffer, id);
+  const song = {
+    id,
+    title: existing?.title || title,
+    blob: new Blob([arrayBuffer], { type }),
+    createdAt: existing?.createdAt || Date.now(),
+    best: existing?.best || {},
+    chartVersion: CHART_VERSION,
+    ...extra,
+    ...analysis,
+  };
+  await songs.put(song);
+  return { song, existed: false };
+}
+
+// ---------- 初期曲 ----------
+// 合成曲(BUILTIN_SONGS)と、songs/index.json に並べた同梱音源を初回起動時に入れる。
+
+const BUILTIN_KEY = 'mtg-builtins';
+
+async function builtinList() {
+  const list = BUILTIN_SONGS.map((b) => ({ key: b.key, title: b.title, load: async () => ({ bytes: encodeWav(await renderSynthSong(b.synth)), type: 'audio/wav' }) }));
+  try {
+    const res = await fetch('songs/index.json', { cache: 'no-cache' });
+    if (res.ok) {
+      for (const entry of await res.json()) {
+        list.push({
+          key: `file:${entry.file}`,
+          title: entry.title,
+          load: async () => {
+            const r = await fetch(`songs/${entry.file}`);
+            if (!r.ok) throw new Error(`songs/${entry.file}: ${r.status}`);
+            return { bytes: await r.arrayBuffer(), type: r.headers.get('content-type') || 'audio/mpeg' };
+          },
+        });
+      }
+    }
+  } catch {
+    // 同梱音源がなくても合成曲だけで始められる
+  }
+  return list;
+}
+
+function installedBuiltins() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(BUILTIN_KEY) || '[]'));
+  } catch {
+    return new Set();
+  }
+}
+
+async function installBuiltins(force = false) {
+  const done = force ? new Set() : installedBuiltins();
+  const todo = (await builtinList()).filter((b) => !done.has(b.key));
+  if (!todo.length) return;
+  // 今の画面(起動時はホーム、設定から呼べば設定)を一時的に置き換えて、終わったら戻す
+  const back = stack[stack.length - 1];
+  replace('loading');
+  const installed = installedBuiltins();
+  for (const [i, b] of todo.entries()) {
+    try {
+      const { bytes, type } = await b.load();
+      const label = `初期曲を準備中… ${i + 1}/${todo.length}「${b.title}」`;
+      setLoading(label, i / todo.length);
+      await importSong(bytes, b.title, type, { builtin: b.key });
+      installed.add(b.key);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+  try {
+    localStorage.setItem(BUILTIN_KEY, JSON.stringify([...installed]));
+  } catch {
+    // 保存できなければ次回また入れ直すだけ
+  }
+  await renderHome();
+  replace(back);
 }
 
 function analyzeBuffer(buffer, id) {
@@ -215,8 +269,23 @@ function analyzeBuffer(buffer, id) {
 
 // ---------- 曲詳細 ----------
 
-function openSong(song, replaceCurrent = false) {
+async function openSong(song, replaceCurrent = false) {
   state.song = song;
+  // 譜面生成のしくみが変わっていたら作り直す(スコアは残す)
+  if (song.chartVersion !== CHART_VERSION) {
+    if (replaceCurrent) replace('loading');
+    else navigate('loading');
+    replaceCurrent = true;
+    try {
+      await prepareBuffer(true);
+      Object.assign(song, await analyzeBuffer(state.buffer, song.id), { chartVersion: CHART_VERSION });
+      await songs.put(song);
+      toast('新しい譜面に作り直しました');
+    } catch (err) {
+      console.error(err);
+      toast('譜面を作り直せませんでした');
+    }
+  }
   renderSong();
   if (replaceCurrent) replace('song');
   else navigate('song');
@@ -331,8 +400,7 @@ function loop(ts) {
     dt: state.paused ? 0 : dt,
     game,
     fallTime: state.fallTime,
-    beat: 60 / song.bpm,
-    firstBeat: song.firstBeat,
+    beats: song.beats,
     duration: song.duration,
     title: song.title,
     safeTop: safeTop(),
@@ -503,6 +571,12 @@ for (const [id, key, label, fmt] of sliders) {
   });
 }
 
+$('reinstall-builtins').addEventListener('click', async () => {
+  audio.ensure();
+  await installBuiltins(true);
+  toast('初期曲を入れ直しました');
+});
+
 $('set-auto').addEventListener('change', (e) => {
   settings.auto = e.target.checked;
   saveSettings(settings);
@@ -612,6 +686,7 @@ async function boot() {
   }
   await renderHome();
   show('home');
+  await installBuiltins();
 
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
     navigator.serviceWorker.register('sw.js').catch(() => {});

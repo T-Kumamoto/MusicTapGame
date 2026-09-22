@@ -24,12 +24,11 @@
       <h1 class="logo">Music<span>Tap</span></h1>
       <button class="icon-btn" id="open-settings" aria-label="設定">⚙</button>
     </header>
-    <div class="home-actions">
+    <div class="home-actions single">
       <label class="btn primary">
         ＋ 曲を追加
         <input type="file" id="file-input" accept="audio/*,.mp3,.m4a,.wav,.ogg" hidden>
       </label>
-      <button class="btn" id="demo-song">デモ曲を作る</button>
     </div>
     <p class="hint">mp3 などの音楽ファイルを選ぶと、自動で譜面を作ります。曲は端末の中だけに保存されます。</p>
     <ul id="song-list" class="song-list"></ul>
@@ -131,6 +130,10 @@
         <span>背景の暗さ <b id="bg-dim-value"></b></span>
         <input type="range" id="set-bg-dim" min="0" max="95" step="1">
       </label>
+      <div class="setting">
+        <span>初期曲</span>
+        <button class="btn small" id="reinstall-builtins">初期曲を入れ直す</button>
+      </div>
       <label class="setting check">
         <input type="checkbox" id="set-auto">
         <span>オートプレイ（譜面の確認用）</span>

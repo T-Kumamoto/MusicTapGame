@@ -1,7 +1,7 @@
 // オフラインでも起動できるようにアプリ本体をキャッシュする。
 // 更新がすぐ反映されるよう、まずネットワークを見て、繋がらない時だけキャッシュを使う。
 
-const CACHE = 'music-tap-game-v1';
+const CACHE = 'music-tap-game-v2';
 const SHELL = [
   './',
   'index.html',
@@ -17,6 +17,7 @@ const SHELL = [
   'js/chart/fft.js',
   'js/chart/generate.js',
   'js/chart/worker.js',
+  'songs/index.json',
   'manifest.webmanifest',
   'icons/icon-192.png',
   'icons/icon-512.png',

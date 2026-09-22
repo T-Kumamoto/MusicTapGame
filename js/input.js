@@ -1,7 +1,14 @@
 // タッチ(マルチタッチ)・マウス・キーボードを「レーンを押した/動かした/離した」に変換する。
 // 時刻はイベント発生時刻(event.timeStamp)から求め、処理の遅れが判定に乗らないようにする。
 
-const KEYS = ['KeyD', 'KeyF', 'Space', 'KeyJ', 'KeyK'];
+// 数字キー 1〜5(テンキーも可)。D F Space J K でも押せる
+const KEYS = [
+  ['Digit1', 'Numpad1', 'KeyD'],
+  ['Digit2', 'Numpad2', 'KeyF'],
+  ['Digit3', 'Numpad3', 'Space'],
+  ['Digit4', 'Numpad4', 'KeyJ'],
+  ['Digit5', 'Numpad5', 'KeyK'],
+];
 // フリックと見なす指の移動量(CSS px)
 const FLICK_PX = 28;
 
@@ -78,7 +85,7 @@ export class Input {
   }
 
   onKey(e, down) {
-    const lane = KEYS.indexOf(e.code);
+    const lane = KEYS.findIndex((codes) => codes.includes(e.code));
     if (!this.game || lane < 0 || lane >= this.renderer.lanes) return;
     e.preventDefault();
     if (e.repeat) return;

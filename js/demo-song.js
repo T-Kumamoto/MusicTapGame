@@ -1,99 +1,148 @@
-// 手元に曲がなくても遊べるよう、デモ曲をその場で合成する。
-// 128 BPM・約 50 秒。イントロ → サビ → 落ち着く所 → ラストサビ。
+// 初期曲をその場で合成する。音源ファイルを同梱しないので、権利の心配なく配れる。
+// 乱数は曲ごとに固定しているので、何度作っても同じ波形(= 同じ曲 ID)になる。
 
 import { mulberry32 } from './chart/generate.js';
 
-const BPM = 128;
-const BARS = 26;
 const SR = 32000;
 
-// C - G - Am - F
-const PROGRESSION = [
-  [48, 52, 55],
-  [43, 47, 50],
-  [45, 48, 52],
-  [41, 45, 48],
+const PROGRESSIONS = {
+  // I - V - vi - IV
+  pop: [[48, 52, 55], [43, 47, 50], [45, 48, 52], [41, 45, 48]],
+  // vi - IV - I - V(切ない系)
+  emo: [[45, 48, 52], [41, 45, 48], [48, 52, 55], [43, 47, 50]],
+};
+
+// sections は 1 文字 = 1 小節。i: イントロ, a: A メロ, c: サビ, m: 落ち着く所
+export const BUILTIN_SONGS = [
+  {
+    key: 'starlight',
+    title: 'Starlight Parade',
+    synth: {
+      bpm: 128,
+      transpose: 0,
+      progression: 'pop',
+      sections: 'iiiiaaaaccccccccmmmmcccccccc',
+      melody: [72, 74, 76, 79, 76, 74, 72, 69, 71, 72, 74, 76, 74, 72, 71, 67],
+      seed: 128,
+    },
+  },
+  {
+    key: 'neon-rush',
+    title: 'Neon Rush',
+    synth: {
+      bpm: 172,
+      transpose: 2,
+      progression: 'emo',
+      sections: 'iiiiaaaaaaaaccccccccmmmmcccccccccccc',
+      melody: [76, 79, 81, 79, 76, 74, 76, 72, 74, 76, 79, 81, 84, 81, 79, 76],
+      seed: 172,
+    },
+  },
+  {
+    key: 'moonlight-letter',
+    title: 'Moonlight Letter',
+    synth: {
+      bpm: 86,
+      transpose: -3,
+      progression: 'emo',
+      sections: 'iiaaaammmmccccmmcc',
+      melody: [69, 72, 76, 74, 72, 71, 72, 67, 69, 71, 72, 76, 79, 76, 74, 72],
+      seed: 86,
+    },
+  },
 ];
-const MELODY = [72, 74, 76, 79, 76, 74, 72, 69, 71, 72, 74, 76, 74, 72, 71, 67];
 
 const midiHz = (m) => 440 * 2 ** ((m - 69) / 12);
 
-export async function renderDemoSong() {
-  const beat = 60 / BPM;
-  const seconds = BARS * 4 * beat + 1.5;
+export async function renderSynthSong(opts) {
+  const { bpm, transpose, sections, melody, seed } = opts;
+  const progression = PROGRESSIONS[opts.progression];
+  const beat = 60 / bpm;
+  const bars = sections.length;
+  const seconds = bars * 4 * beat + 2;
   const ctx = new OfflineAudioContext(1, Math.ceil(seconds * SR), SR);
   const master = ctx.createGain();
   master.gain.value = 0.55;
   master.connect(ctx.destination);
 
-  // 乱数を固定して毎回同じ波形にする(同じ曲として扱われる)
-  const rand = mulberry32(128);
+  const rand = mulberry32(seed);
   const noise = ctx.createBuffer(1, SR, SR);
   const nd = noise.getChannelData(0);
   for (let i = 0; i < nd.length; i++) nd[i] = rand() * 2 - 1;
+  const slow = bpm < 100;
+  const fast = bpm > 150;
 
-  const section = (bar) => {
-    if (bar < 4) return 'intro';
-    if (bar < 12) return 'chorus';
-    if (bar < 16) return 'calm';
-    return 'chorus';
-  };
-
-  for (let bar = 0; bar < BARS; bar++) {
-    const sec = section(bar);
-    const chord = PROGRESSION[bar % 4];
+  for (let bar = 0; bar < bars; bar++) {
+    const sec = sections[bar];
+    const chord = progression[bar % 4].map((n) => n + transpose);
     const barStart = bar * 4 * beat;
+    const phrase = melody.map((m) => m + transpose + (bar % 4 === 2 ? -3 : 0));
 
     // パッド(和音を伸ばす)
     for (const note of chord) {
-      const osc = ctx.createOscillator();
-      osc.type = 'triangle';
-      osc.frequency.value = midiHz(note + 12);
-      const g = ctx.createGain();
-      const level = sec === 'calm' ? 0.08 : 0.05;
-      g.gain.setValueAtTime(0, barStart);
-      g.gain.linearRampToValueAtTime(level, barStart + 0.2);
-      g.gain.setValueAtTime(level, barStart + 4 * beat - 0.15);
-      g.gain.linearRampToValueAtTime(0, barStart + 4 * beat);
-      osc.connect(g).connect(master);
-      osc.start(barStart);
-      osc.stop(barStart + 4 * beat);
+      const level = sec === 'm' || slow ? 0.08 : 0.05;
+      tone(ctx, master, 'triangle', midiHz(note + 12), barStart, 4 * beat, level, 0.2, 0.15);
     }
 
     for (let b = 0; b < 4; b++) {
       const t = barStart + b * beat;
-      if (sec !== 'intro') {
-        if (sec === 'chorus' || b % 2 === 0) kick(ctx, master, t);
-        if (b % 2 === 1) snare(ctx, master, noise, t, sec === 'calm' ? 0.2 : 0.45);
+      const drums = sec !== 'i' && !(slow && sec === 'm');
+      if (drums) {
+        if (sec === 'c' || b % 2 === 0) kick(ctx, master, t);
+        if (b % 2 === 1) snare(ctx, master, noise, t, sec === 'c' ? 0.45 : 0.25);
       }
       for (const h of [0, 0.5]) {
-        if (sec === 'intro' && h === 0 && b % 2 === 0) continue;
-        hat(ctx, master, noise, t + h * beat, sec === 'chorus' ? 0.12 : 0.06);
+        if (sec === 'i' && h === 0 && b % 2 === 0) continue;
+        if (slow && h === 0.5 && sec !== 'c') continue;
+        hat(ctx, master, noise, t + h * beat, sec === 'c' ? 0.12 : 0.06);
       }
-      // ベース(8分)
-      if (sec !== 'intro') {
-        for (const h of [0, 0.5]) bass(ctx, master, midiHz(chord[0] - 12), t + h * beat, beat * 0.45);
+      if (sec !== 'i') {
+        // ベース。速い曲は 4 分、それ以外は 8 分
+        for (const h of fast ? [0] : [0, 0.5]) bass(ctx, master, midiHz(chord[0] - 12), t + h * beat, beat * (fast ? 0.9 : 0.45));
       }
     }
 
-    // メロディ(8分)。落ち着く所では伸ばす
-    const phrase = MELODY.map((m) => m + (bar % 4 === 2 ? -3 : 0));
-    if (sec === 'calm') {
-      for (let b = 0; b < 4; b += 2) lead(ctx, master, midiHz(phrase[(bar * 2 + b) % 16]), barStart + b * beat, beat * 1.9, 0.09);
+    // メロディ。A メロは 4 分、サビは 8 分、落ち着く所は伸ばす
+    if (sec === 'm') {
+      for (let b = 0; b < 4; b += 2) {
+        tone(ctx, master, 'square', midiHz(phrase[(bar * 2 + b) % 16]), barStart + b * beat, beat * 1.9, 0.09, 0.01, beat * 0.5, 3000);
+      }
     } else {
-      for (let e = 0; e < 8; e++) {
-        if (sec === 'intro' && e % 2 === 1) continue;
-        const idx = ((bar % 2) * 8 + e) % 16;
-        lead(ctx, master, midiHz(phrase[idx]), barStart + e * beat * 0.5, beat * 0.42, 0.11);
+      const step = sec === 'c' ? 0.5 : 1;
+      for (let e = 0; e < 4 / step; e++) {
+        if (sec === 'i' && e % 2 === 1) continue;
+        const idx = ((bar % 2) * 8 + e * step * 2) % 16;
+        tone(ctx, master, 'square', midiHz(phrase[idx]), barStart + e * step * beat, beat * step * 0.85, 0.1, 0.01, beat * 0.1, 3000);
       }
     }
   }
   // 最後の一発
-  const end = BARS * 4 * beat;
+  const end = bars * 4 * beat;
   kick(ctx, master, end);
-  for (const note of PROGRESSION[0]) lead(ctx, master, midiHz(note + 24), end, 1.2, 0.07);
+  for (const note of progression[0]) tone(ctx, master, 'square', midiHz(note + transpose + 24), end, 1.4, 0.07, 0.01, 0.6, 3000);
 
   return ctx.startRendering();
+}
+
+function tone(ctx, out, type, hz, t, len, level, attack, release, cutoff) {
+  const osc = ctx.createOscillator();
+  osc.type = type;
+  osc.frequency.value = hz;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(level, t + attack);
+  g.gain.setValueAtTime(level, Math.max(t + attack, t + len - release));
+  g.gain.linearRampToValueAtTime(0, t + len);
+  let node = osc;
+  if (cutoff) {
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = cutoff;
+    node = osc.connect(lp);
+  }
+  node.connect(g).connect(out);
+  osc.start(t);
+  osc.stop(t + len);
 }
 
 function kick(ctx, out, t) {
@@ -108,34 +157,22 @@ function kick(ctx, out, t) {
   osc.stop(t + 0.3);
 }
 
-function snare(ctx, out, noise, t, level) {
+function noiseHit(ctx, out, noise, t, level, filterType, freq, len) {
   const src = ctx.createBufferSource();
   src.buffer = noise;
-  const bp = ctx.createBiquadFilter();
-  bp.type = 'bandpass';
-  bp.frequency.value = 1800;
-  bp.Q.value = 0.7;
+  const f = ctx.createBiquadFilter();
+  f.type = filterType;
+  f.frequency.value = freq;
   const g = ctx.createGain();
   g.gain.setValueAtTime(level, t);
-  g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
-  src.connect(bp).connect(g).connect(out);
+  g.gain.exponentialRampToValueAtTime(0.001, t + len);
+  src.connect(f).connect(g).connect(out);
   src.start(t, (t * 7.31) % 0.5);
-  src.stop(t + 0.2);
+  src.stop(t + len + 0.01);
 }
 
-function hat(ctx, out, noise, t, level) {
-  const src = ctx.createBufferSource();
-  src.buffer = noise;
-  const hp = ctx.createBiquadFilter();
-  hp.type = 'highpass';
-  hp.frequency.value = 7000;
-  const g = ctx.createGain();
-  g.gain.setValueAtTime(level, t);
-  g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
-  src.connect(hp).connect(g).connect(out);
-  src.start(t, (t * 7.31) % 0.5);
-  src.stop(t + 0.06);
-}
+const snare = (ctx, out, noise, t, level) => noiseHit(ctx, out, noise, t, level, 'bandpass', 1800, 0.18);
+const hat = (ctx, out, noise, t, level) => noiseHit(ctx, out, noise, t, level, 'highpass', 7000, 0.05);
 
 function bass(ctx, out, hz, t, len) {
   const osc = ctx.createOscillator();
@@ -147,23 +184,6 @@ function bass(ctx, out, hz, t, len) {
   const g = ctx.createGain();
   g.gain.setValueAtTime(0.18, t);
   g.gain.exponentialRampToValueAtTime(0.01, t + len);
-  osc.connect(lp).connect(g).connect(out);
-  osc.start(t);
-  osc.stop(t + len);
-}
-
-function lead(ctx, out, hz, t, len, level) {
-  const osc = ctx.createOscillator();
-  osc.type = 'square';
-  osc.frequency.value = hz;
-  const lp = ctx.createBiquadFilter();
-  lp.type = 'lowpass';
-  lp.frequency.value = 3000;
-  const g = ctx.createGain();
-  g.gain.setValueAtTime(0, t);
-  g.gain.linearRampToValueAtTime(level, t + 0.01);
-  g.gain.setValueAtTime(level, t + len * 0.7);
-  g.gain.linearRampToValueAtTime(0, t + len);
   osc.connect(lp).connect(g).connect(out);
   osc.start(t);
   osc.stop(t + len);

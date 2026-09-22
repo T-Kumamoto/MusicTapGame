@@ -8,3 +8,8 @@ Thumbs.db
 *.wav
 *.ogg
 *.m4a
+
+# 同梱曲フォルダの音源はコミットする
+!songs/*.mp3
+!songs/*.ogg
+!songs/*.m4a

@@ -5,7 +5,7 @@ const DB_NAME = 'music-tap-game';
 const DB_VERSION = 1;
 
 // 譜面生成アルゴリズムを変えたら上げる。古い譜面は自動で作り直す。
-export const CHART_VERSION = 1;
+export const CHART_VERSION = 2;
 
 let dbPromise = null;
 

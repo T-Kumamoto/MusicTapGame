@@ -194,6 +194,9 @@ body {
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
+.home-actions.single {
+  grid-template-columns: 1fr;
+}
 .hint {
   color: var(--muted);
   font-size: 13px;
