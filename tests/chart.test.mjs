@@ -4,13 +4,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { analyze } from '../js/chart/analyze.js';
-import { buildGrid, generateChart, DIFFICULTIES, LANES } from '../js/chart/generate.js';
+import { buildGrid, generateChart, gridPositions, DIFFICULTIES, LANES } from '../js/chart/generate.js';
 import { mulberry32 } from '../js/chart/generate.js';
 
 const SR = 22050;
 
 // キック(表拍)、スネア(2・4拍)、ハイハット(8分)、持続するベース
-function drumLoop({ bpm, offset, seconds }) {
+// beatTimes を渡すとその時刻に拍を打つ(テンポが揺れる曲の再現用)
+function drumLoop({ bpm, offset, seconds, beatTimes }) {
   const out = new Float32Array(Math.floor(SR * seconds));
   const rand = mulberry32(1);
   const beat = 60 / bpm;
@@ -18,15 +19,18 @@ function drumLoop({ bpm, offset, seconds }) {
     const s0 = Math.floor(start * SR);
     for (let i = 0; i < len * SR && s0 + i < out.length; i++) out[s0 + i] += fn(i / SR);
   };
-  for (let b = 0; offset + b * beat < seconds; b++) {
-    const t = offset + b * beat;
+  const times = beatTimes || [];
+  if (!beatTimes) for (let b = 0; offset + b * beat < seconds; b++) times.push(offset + b * beat);
+  for (let b = 0; b < times.length; b++) {
+    const t = times[b];
+    const localBeat = (times[b + 1] ?? t + beat) - t;
     let phase = 0;
     add(t, 0.25, (x) => {
       phase += (2 * Math.PI * (50 + 90 * Math.exp(-x * 30))) / SR;
       return 0.9 * Math.sin(phase) * Math.exp(-x * 12);
     });
     if (b % 2 === 1) add(t, 0.15, (x) => 0.5 * (rand() * 2 - 1) * Math.exp(-x * 25));
-    for (const h of [0, 0.5]) add(t + h * beat, 0.04, (x) => 0.15 * (rand() * 2 - 1) * Math.exp(-x * 90));
+    for (const h of [0, 0.5]) add(t + h * localBeat, 0.04, (x) => 0.15 * (rand() * 2 - 1) * Math.exp(-x * 90));
   }
   for (let i = 0; i < out.length; i++) out[i] += 0.1 * Math.sin((2 * Math.PI * 55 * i) / SR);
   return out;
@@ -50,6 +54,27 @@ for (const [bpm, offset] of [[128, 0.5], [96, 0.23], [174, 0.81]]) {
   });
 }
 
+test('テンポが一定の曲は一定テンポの格子を使う', () => {
+  const { features } = build(128, 0.5);
+  assert.equal(features.tempoMode, 'constant');
+});
+
+test('テンポが揺れる曲は拍を一つずつ追いかける', () => {
+  // 100 BPM から 130 BPM へ滑らかに加速し、途中で少し揺れる
+  const times = [];
+  for (let t = 0.4, i = 0; t < 45; i++) {
+    times.push(t);
+    const bpm = 100 + 30 * Math.min(1, t / 40) + 4 * Math.sin(i / 3);
+    t += 60 / bpm;
+  }
+  const features = analyze(drumLoop({ bpm: 110, offset: 0, seconds: 46, beatTimes: times }), SR);
+  assert.equal(features.tempoMode, 'tracked');
+  // 最初と最後の数拍を除き、正しい拍に 25ms 以内で乗っている
+  const inner = times.filter((t) => t > 3 && t < 42);
+  const hit = inner.filter((t) => features.beats.some((b) => Math.abs(b - t) < 0.025));
+  assert.ok(hit.length / inner.length > 0.9, `${hit.length}/${inner.length} beats matched`);
+});
+
 test('難易度が上がるほどノーツが増え、最小間隔とレーン範囲を守る', () => {
   const { features, grid } = build(128, 0.5);
   let prevCount = 0;
@@ -64,11 +89,10 @@ test('難易度が上がるほどノーツが増え、最小間隔とレーン�
     const times = [...new Set(notes.map((n) => n.t))].sort((a, b) => a - b);
     for (let i = 1; i < times.length; i++) assert.ok(times[i] - times[i - 1] >= minGap, `${diff} gap`);
 
+    const onGrid = new Set(gridPositions(features.beats, features.duration).map((p) => Math.round(p.t * 1000)));
     for (const n of notes) {
       assert.ok(n.lane >= 0 && n.lane < LANES);
-      // 16分グリッド上にある
-      const k = (n.t - features.firstBeat) / grid.step;
-      assert.ok(Math.abs(k - Math.round(k)) < 0.01, `${diff} off-grid ${n.t}`);
+      assert.ok(onGrid.has(Math.round(n.t * 1000)), `${diff} off-grid ${n.t}`);
     }
   }
 });

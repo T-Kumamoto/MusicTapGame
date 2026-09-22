@@ -24,9 +24,8 @@ export function mulberry32(seed) {
 
 // グリッド(16分)ごとに「ここにノーツを置く価値」を計算する。難易度に依らないので一度だけ。
 export function buildGrid(features) {
-  const { flux, rms, centroid, hopSec, frames, bpm, firstBeat, duration, frameTime } = features;
+  const { flux, rms, centroid, hopSec, frames, bpm, duration, frameTime } = features;
   const beat = 60 / bpm;
-  const step = beat / 4;
   const timeToFrame = (sec) => Math.round((sec - frameTime(0)) / hopSec);
 
   // 帯域ごとに「周囲 3 秒の平均」で割って、局所的に目立つ立ち上がりだけを拾う
@@ -59,16 +58,19 @@ export function buildGrid(features) {
   const weights = { low: 1.2, mid: 1.0, high: 0.75 };
   const win = Math.max(1, Math.round(0.03 / hopSec));
   const grid = [];
-  for (let k = 0, t = firstBeat; t < duration - 0.3; k++, t = firstBeat + k * step) {
+  for (const { t, k } of gridPositions(features.beats, duration)) {
     const f = timeToFrame(t);
     if (f < 1 || f >= frames) continue;
     const strength = {};
     let score = 0;
     let peakFrame = f;
     for (const name of Object.keys(flux)) {
+      const x = flux[name];
       let best = 0;
-      for (let j = Math.max(1, f - win); j <= Math.min(frames - 1, f + win); j++) {
-        const s = flux[name][j] / localMean[name][j];
+      for (let j = Math.max(1, f - win); j <= Math.min(frames - 2, f + win); j++) {
+        // 立ち上がりの山の頂点だけを数える(山の裾で点数が付くと、どこにでも音があることになる)
+        if (x[j] < x[j - 1] || x[j] < x[j + 1]) continue;
+        const s = x[j] / localMean[name][j];
         if (s > best) {
           best = s;
           if (name === 'mid') peakFrame = j;
@@ -82,14 +84,36 @@ export function buildGrid(features) {
     grid.push({
       k,
       t,
-      pos: k % 4, // 0: 表拍, 2: 8分裏, 1/3: 16分
+      pos: ((k % 4) + 4) % 4, // 0: 表拍, 2: 8分裏, 1/3: 16分
       strength,
       score: quiet ? 0 : score * (0.45 + level),
       level,
       pitch: centroidRank(centroid[peakFrame]),
     });
   }
-  return { grid, beat, step };
+  return { grid, beat };
+}
+
+// 拍と拍の間を 4 等分して 16 分のグリッドを作る。最初の拍より前と最後の拍より後は、
+// 端の拍間隔のまま延ばす。k は最初の拍を 0 とした 16 分の通し番号。
+export function gridPositions(beats, duration) {
+  const out = [];
+  if (beats.length < 2) return out;
+  const firstStep = (beats[1] - beats[0]) / 4;
+  for (let j = Math.floor(beats[0] / firstStep); j >= 1; j--) {
+    const t = beats[0] - j * firstStep;
+    if (t >= 0.05) out.push({ t, k: -j });
+  }
+  for (let i = 0; i + 1 < beats.length; i++) {
+    const step = (beats[i + 1] - beats[i]) / 4;
+    for (let j = 0; j < 4; j++) out.push({ t: beats[i] + j * step, k: i * 4 + j });
+  }
+  const last = beats.length - 1;
+  const lastStep = (beats[last] - beats[last - 1]) / 4;
+  for (let j = 0; beats[last] + j * lastStep < duration - 0.3; j++) {
+    out.push({ t: beats[last] + j * lastStep, k: last * 4 + j });
+  }
+  return out;
 }
 
 export function generateChart(features, gridInfo, difficulty, seed) {
@@ -250,7 +274,9 @@ export function estimateLevel(notes) {
   }
   const span = Math.max(1, notes[notes.length - 1].t - notes[0].t);
   const avg = notes.length / span;
-  return Math.max(1, Math.min(30, Math.round(2 + (peak / 10) * 2.4 + avg * 1.2)));
+  // 密度に対して対数的に上がる(2 倍の密度で +10 程度)。目安: 2 ノーツ/秒で Lv6、8 ノーツ/秒で Lv27
+  const density = 0.6 * (peak / 10) + 0.4 * avg;
+  return Math.max(1, Math.min(30, Math.round(14.4 * Math.log(Math.max(density, 1)) - 3.5)));
 }
 
 function activeSpan(grid) {

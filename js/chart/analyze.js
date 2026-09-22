@@ -105,24 +105,100 @@ export function analyze(samples, sampleRate, onProgress = () => {}) {
   }
 
   onProgress(0.75);
+  const duration = samples.length / sampleRate;
   const tempo = estimateTempo(onset, hopSec, frameTime);
+  const beatInfo = trackBeats(onset, hopSec, frameTime, tempo, duration);
   onProgress(0.95);
 
   return {
     hopSec,
     frames,
     frameTime,
-    duration: samples.length / sampleRate,
+    duration,
     flux,
     onset,
     rms,
     centroid,
-    bpm: tempo.bpm,
-    firstBeat: tempo.firstBeat,
+    bpm: beatInfo.bpm,
+    beats: beatInfo.beats,
+    firstBeat: beatInfo.beats[0] ?? tempo.firstBeat,
+    tempoMode: beatInfo.mode,
   };
 }
 
-// テンポは一定と仮定する。オンセット包絡の自己相関で大まかな BPM を出し、
+// 拍の位置を一つずつ決める。テンポが揺れる曲(生演奏・クラシック等)は一定テンポの格子だと
+// 数小節でずれるので、動的計画法で「立ち上がりに乗りつつ、間隔が急に変わらない」拍列を探す
+// (Ellis 2007, "Beat Tracking by Dynamic Programming")。
+// テンポが一定の曲は格子の方が揺れがないので、立ち上がりへの乗り方がほぼ同じなら格子を採る。
+// 小さいほどテンポの揺れに追従する。合成した加速ドラムで 30 が最も正確だった(100〜400 は裏拍へ乗り移る)
+const TIGHTNESS = 30;
+
+export function trackBeats(onset, hopSec, frameTime, tempo, duration) {
+  const env = highpass(onset, Math.round(1 / hopSec));
+  const n = env.length;
+  let mean = 0;
+  for (let i = 0; i < n; i++) mean += env[i];
+  mean /= n;
+  let variance = 0;
+  for (let i = 0; i < n; i++) variance += (env[i] - mean) ** 2;
+  const sd = Math.sqrt(variance / n) || 1;
+  const e = new Float32Array(n);
+  for (let i = 0; i < n; i++) e[i] = env[i] / sd;
+
+  const beatSec = 60 / tempo.bpm;
+  const constant = [];
+  for (let t = tempo.firstBeat; t < duration; t += beatSec) constant.push(t);
+
+  const period = beatSec / hopSec;
+  const lo = Math.max(1, Math.round(period * 0.6));
+  const hi = Math.round(period * 1.6);
+  const score = new Float64Array(n);
+  const back = new Int32Array(n).fill(-1);
+  for (let t = 0; t < n; t++) {
+    let best = -Infinity;
+    let arg = -1;
+    for (let d = lo; d <= hi && t - d >= 0; d++) {
+      const r = Math.log(d / period);
+      const v = score[t - d] - TIGHTNESS * r * r;
+      if (v > best) {
+        best = v;
+        arg = t - d;
+      }
+    }
+    if (arg >= 0 && best > 0) {
+      score[t] = e[t] + best;
+      back[t] = arg;
+    } else {
+      score[t] = e[t];
+    }
+  }
+  let end = n - 1;
+  for (let t = Math.max(0, n - Math.round(period)); t < n; t++) if (score[t] > score[end]) end = t;
+  const frames = [];
+  for (let t = end; t >= 0; t = back[t]) frames.push(t);
+  frames.reverse();
+  const tracked = frames.map(frameTime);
+
+  // 格子の拍はフレームの間に落ちるので、前後 1 フレームの最大値で比べる(追跡側と条件を揃える)
+  const at = (sec) => {
+    const i = Math.round((sec - frameTime(0)) / hopSec);
+    let m = 0;
+    for (let j = Math.max(0, i - 1); j <= Math.min(n - 1, i + 1); j++) m = Math.max(m, e[j]);
+    return m;
+  };
+  const fit = (beats) => (beats.length ? beats.reduce((s, b) => s + at(b), 0) / beats.length : 0);
+  const constantFit = fit(constant);
+  const trackedFit = fit(tracked);
+
+  if (tracked.length < 8 || constantFit >= 0.9 * trackedFit) {
+    return { mode: 'constant', beats: constant, bpm: tempo.bpm };
+  }
+  const intervals = tracked.slice(1).map((b, i) => b - tracked[i]).sort((a, b) => a - b);
+  const median = intervals[intervals.length >> 1];
+  return { mode: 'tracked', beats: tracked, bpm: Math.round((60 / median) * 100) / 100 };
+}
+
+// 曲全体を一定テンポとみなした時の BPM と位相。オンセット包絡の自己相関で大まかな BPM を出し、
 // 拍位置に櫛形フィルタを当てて BPM と位相を細かく詰める。
 export function estimateTempo(onset, hopSec, frameTime) {
   const n = onset.length;
