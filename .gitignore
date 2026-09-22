@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.DS_Store
+Thumbs.db
+*.log
+# 手元のテスト用音源はコミットしない
+*.mp3
+*.wav
+*.ogg
+*.m4a
