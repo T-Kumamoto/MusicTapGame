@@ -4,7 +4,6 @@ import { Input } from './input.js';
 import { Game, rankOf } from './game.js';
 import { songs, assets, fileId, loadSettings, saveSettings, fallTimeFor, CHART_VERSION } from './storage.js';
 import { downmix } from './chart/analyze.js';
-import { BUILTIN_SONGS, renderSynthSong, encodeWav } from './demo-song.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -84,8 +83,12 @@ function toast(message, ms = 2600) {
   toast.timer = setTimeout(() => (el.hidden = true), ms);
 }
 
+// 複数曲をまとめて処理する時の見出し(「初期曲を準備中 1/3」など)
+let loadingNote = '';
+
 function setLoading(text, progress) {
-  $('loading-text').textContent = text;
+  $('loading-text').textContent = loadingNote ? `${loadingNote}
+${text}` : text;
   $('loading-bar').style.width = `${Math.round(progress * 100)}%`;
 }
 
@@ -184,32 +187,28 @@ async function importSong(arrayBuffer, title, type, extra = {}) {
 }
 
 // ---------- 初期曲 ----------
-// 合成曲(BUILTIN_SONGS)と、songs/index.json に並べた同梱音源を初回起動時に入れる。
+// songs/index.json に並べた同梱音源を初回起動時にライブラリへ入れる。
 
 const BUILTIN_KEY = 'mtg-builtins';
 
 async function builtinList() {
-  const list = BUILTIN_SONGS.map((b) => ({ key: b.key, title: b.title, load: async () => ({ bytes: encodeWav(await renderSynthSong(b.synth)), type: 'audio/wav' }) }));
   try {
     const res = await fetch('songs/index.json', { cache: 'no-cache' });
-    if (res.ok) {
-      for (const entry of await res.json()) {
-        list.push({
-          key: `file:${entry.file}`,
-          title: entry.title,
-          extra: entry.credit ? { credit: entry.credit } : {},
-          load: async () => {
-            const r = await fetch(`songs/${encodeURIComponent(entry.file)}`);
-            if (!r.ok) throw new Error(`songs/${entry.file}: ${r.status}`);
-            return { bytes: await r.arrayBuffer(), type: r.headers.get('content-type') || 'audio/mpeg' };
-          },
-        });
-      }
-    }
+    if (!res.ok) return null;
+    return (await res.json()).map((entry) => ({
+      key: `file:${entry.file}`,
+      title: entry.title,
+      extra: entry.credit ? { credit: entry.credit } : {},
+      load: async () => {
+        const r = await fetch(`songs/${encodeURIComponent(entry.file)}`);
+        if (!r.ok) throw new Error(`songs/${entry.file}: ${r.status}`);
+        return { bytes: await r.arrayBuffer(), type: r.headers.get('content-type') || 'audio/mpeg' };
+      },
+    }));
   } catch {
-    // 同梱音源がなくても合成曲だけで始められる
+    // オフライン等で一覧が取れない時は何もしない(入れ済みの曲はそのまま)
+    return null;
   }
-  return list;
 }
 
 function installedBuiltins() {
@@ -220,30 +219,48 @@ function installedBuiltins() {
   }
 }
 
+function saveInstalledBuiltins(keys) {
+  try {
+    localStorage.setItem(BUILTIN_KEY, JSON.stringify([...keys]));
+  } catch {
+    // 保存できなければ次回また入れ直すだけ
+  }
+}
+
 async function installBuiltins(force = false) {
-  const done = force ? new Set() : installedBuiltins();
-  const todo = (await builtinList()).filter((b) => !done.has(b.key));
-  if (!todo.length) return;
+  const list = await builtinList();
+  if (!list) return;
+  const keys = new Set(list.map((b) => b.key));
+  const installed = installedBuiltins();
+
+  // 初期曲から外れた曲は片付ける(自分で追加した曲には builtin が付かないので残る)
+  for (const song of await songs.all()) {
+    if (song.builtin && !keys.has(song.builtin)) await songs.remove(song.id);
+  }
+  for (const key of installed) if (!keys.has(key)) installed.delete(key);
+
+  const todo = list.filter((b) => force || !installed.has(b.key));
+  if (!todo.length) {
+    saveInstalledBuiltins(installed);
+    await renderHome();
+    return;
+  }
   // 今の画面(起動時はホーム、設定から呼べば設定)を一時的に置き換えて、終わったら戻す
   const back = stack[stack.length - 1];
   replace('loading');
-  const installed = installedBuiltins();
   for (const [i, b] of todo.entries()) {
+    loadingNote = `初期曲を準備中 ${i + 1}/${todo.length}「${b.title}」`;
     try {
+      setLoading('曲を読み込み中…', 0.02);
       const { bytes, type } = await b.load();
-      const label = `初期曲を準備中… ${i + 1}/${todo.length}「${b.title}」`;
-      setLoading(label, i / todo.length);
-      await importSong(bytes, b.title, type, { builtin: b.key, ...(b.extra || {}) });
+      await importSong(bytes, b.title, type, { builtin: b.key, ...b.extra });
       installed.add(b.key);
     } catch (err) {
       console.error(err);
     }
   }
-  try {
-    localStorage.setItem(BUILTIN_KEY, JSON.stringify([...installed]));
-  } catch {
-    // 保存できなければ次回また入れ直すだけ
-  }
+  loadingNote = '';
+  saveInstalledBuiltins(installed);
   await renderHome();
   replace(back);
 }

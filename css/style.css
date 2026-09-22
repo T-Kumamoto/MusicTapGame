@@ -331,6 +331,10 @@ body {
   width: min(340px, 100%);
   text-align: center;
 }
+#loading-text {
+  white-space: pre-line;
+  line-height: 1.7;
+}
 .progress {
   height: 8px;
   margin-top: 14px;

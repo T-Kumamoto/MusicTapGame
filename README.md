@@ -27,8 +27,9 @@ Bluetooth イヤホンは遅延が大きいので特に必要。
 
 | 曲 | クレジット |
 |---|---|
-| Starlight Parade / Neon Rush / Moonlight Letter | アプリ内で合成(`js/demo-song.js`) |
 | ソ連国歌 | すーぱーういるす / [ニコニ・コモンズ nc241752](https://commons.nicovideo.jp/works/nc241752)(利用許可範囲: ネット全般) |
+| モルドバ国歌 | (出典未記入) |
+| 沿ドニエストル共和国国歌 | (出典未記入) |
 
 同梱曲の追加方法は [songs/README.md](songs/README.md)。
 
@@ -59,7 +60,6 @@ npm test
 | `js/chart/analyze.js` | 帯域別オンセット・音量・スペクトル重心・BPM/拍位置の推定 |
 | `js/chart/generate.js` | 難易度別の譜面組み立て |
 | `js/chart/worker.js` | 解析を Web Worker で実行 |
-| `js/demo-song.js` | デモ曲の合成 |
 | `sw.js` / `manifest.webmanifest` | PWA(ホーム画面に追加・オフライン起動) |
 
 ### 譜面生成のしくみ
