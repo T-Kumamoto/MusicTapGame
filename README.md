@@ -28,8 +28,8 @@ Bluetooth イヤホンは遅延が大きいので特に必要。
 | 曲 | クレジット |
 |---|---|
 | ソ連国歌 | すーぱーういるす / [ニコニ・コモンズ nc241752](https://commons.nicovideo.jp/works/nc241752)(利用許可範囲: ネット全般) |
-| モルドバ国歌 | (出典未記入) |
-| 沿ドニエストル共和国国歌 | (出典未記入) |
+| モルドバ国歌 | [Wikimedia Commons](https://commons.wikimedia.org/)(パブリックドメイン) |
+| 沿ドニエストル共和国国歌 | [Wikimedia Commons](https://commons.wikimedia.org/)(パブリックドメイン) |
 
 同梱曲の追加方法は [songs/README.md](songs/README.md)。
 
