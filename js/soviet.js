@@ -92,17 +92,19 @@ export class Emblem {
     const size = (layout.minSize + (layout.maxSize - layout.minSize) * ease) * (1 + 0.12 * this.bump);
     const cx = layout.cx;
     const cy = layout.topY + (layout.centerY - layout.topY) * ease;
-    const shine = Math.min(1.6, g * (0.75 + 0.25 * pulse) + f + 0.25 * Math.max(0, tier - 1));
+    const shine = Math.min(1.3, g * (0.75 + 0.25 * pulse) + f + 0.15 * Math.max(0, tier - 1));
+    // 大きくなると後光や光線が画面を覆って本体が霞むので、その分だけ控えめにする
+    const fade = 1 - 0.45 * ease;
 
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     if (shine > 0.02) {
       // 後光。段階が上がるほど大きく白く
-      const r = size * (0.85 + 0.25 * tier + 0.5 * f);
+      const r = size * (0.85 + 0.12 * tier + 0.4 * f);
       const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
       const core = tier >= 2 ? '255, 245, 210' : '255, 200, 80';
-      grad.addColorStop(0, `rgba(${core}, ${0.4 * Math.min(1, shine)})`);
-      grad.addColorStop(0.5, `rgba(255, 70, 40, ${0.16 * Math.min(1, shine)})`);
+      grad.addColorStop(0, `rgba(${core}, ${0.4 * Math.min(1, shine) * fade})`);
+      grad.addColorStop(0.5, `rgba(255, 70, 40, ${0.16 * Math.min(1, shine) * fade})`);
       grad.addColorStop(1, 'rgba(255, 60, 40, 0)');
       ctx.fillStyle = grad;
       ctx.beginPath();
@@ -110,9 +112,7 @@ export class Emblem {
       ctx.fill();
 
       // 光線。100 で本数が増え、200 で赤い光線が逆回転で重なる。
-      // 大きくなると画面を覆うので、その分だけ薄くして譜面を見やすく保つ
       const spin = now * 0.25;
-      const fade = 1 - 0.45 * ease;
       this.rays(ctx, cx, cy, r * 1.35, tier >= 2 ? 18 : 12, spin, `rgba(255, 220, 130, ${0.1 * Math.min(1, shine) * fade})`);
       if (tier >= 3) this.rays(ctx, cx, cy, r * 1.6, 9, -spin * 1.6, `rgba(255, 70, 60, ${0.13 * (0.7 + 0.3 * pulse) * fade})`);
     }
@@ -148,7 +148,7 @@ export class Emblem {
     if (tier >= 2) {
       ctx.shadowBlur = 0;
       ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = 0.18 + 0.12 * (tier - 2) + 0.15 * pulse;
+      ctx.globalAlpha = 0.14 + 0.06 * (tier - 2) + 0.1 * pulse;
       const sheen = ctx.createLinearGradient(0, 0, 100, 100);
       const sweep = (now * 0.35) % 1.6 - 0.3; // 光の帯が左上から右下へ流れる
       sheen.addColorStop(0, 'rgba(255, 240, 200, 0.4)');
