@@ -109,10 +109,12 @@ export class Emblem {
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
       ctx.fill();
 
-      // 光線。100 で本数が増え、200 で赤い光線が逆回転で重なる
+      // 光線。100 で本数が増え、200 で赤い光線が逆回転で重なる。
+      // 大きくなると画面を覆うので、その分だけ薄くして譜面を見やすく保つ
       const spin = now * 0.25;
-      this.rays(ctx, cx, cy, r * 1.35, tier >= 2 ? 18 : 12, spin, `rgba(255, 220, 130, ${0.1 * Math.min(1, shine)})`);
-      if (tier >= 3) this.rays(ctx, cx, cy, r * 1.6, 9, -spin * 1.6, `rgba(255, 70, 60, ${0.12 * (0.7 + 0.3 * pulse)})`);
+      const fade = 1 - 0.45 * ease;
+      this.rays(ctx, cx, cy, r * 1.35, tier >= 2 ? 18 : 12, spin, `rgba(255, 220, 130, ${0.1 * Math.min(1, shine) * fade})`);
+      if (tier >= 3) this.rays(ctx, cx, cy, r * 1.6, 9, -spin * 1.6, `rgba(255, 70, 60, ${0.13 * (0.7 + 0.3 * pulse) * fade})`);
     }
 
     // 200 コンボ以上は周りを星が回る
@@ -126,16 +128,14 @@ export class Emblem {
     }
     ctx.globalCompositeOperation = 'source-over';
 
-    // 本体。光っていない時は暗い赤のシルエット、光るほど金色、100 以上は白金に近づく
+    // 本体。光っていない時は暗い赤のシルエット、光るほど金色
     const k = Math.max(g, f);
-    const whiten = tier >= 2 ? 0.35 + 0.15 * pulse : 0;
     ctx.translate(cx - size / 2, cy - size / 2);
     ctx.scale(size / 100, size / 100);
     const fill = ctx.createLinearGradient(0, 0, 100, 100);
-    fill.addColorStop(0, mix(mix3([120, 30, 40], [255, 236, 160], k), [255, 255, 245], whiten));
-    fill.addColorStop(1, mix(mix3([90, 20, 30], [255, 165, 35], k), [255, 225, 150], whiten));
-    // 大きくなって譜面に重なっても邪魔しすぎないよう、不透明度は上限を設ける
-    ctx.globalAlpha = (0.25 + 0.65 * k) * (1 - 0.15 * ease);
+    fill.addColorStop(0, mix([120, 30, 40], [255, 236, 160], k));
+    fill.addColorStop(1, mix([90, 20, 30], [255, 165, 35], k));
+    ctx.globalAlpha = 0.25 + 0.7 * k;
     if (k > 0.05) {
       ctx.shadowColor = tier >= 2 ? 'rgba(255, 240, 190, 0.95)' : 'rgba(255, 190, 60, 0.9)';
       // shadowBlur は座標変換の影響を受けないので、画面上の px で指定する
@@ -143,6 +143,20 @@ export class Emblem {
     }
     ctx.fillStyle = fill;
     for (const part of this.parts) ctx.fill(part);
+
+    // 100 以上は金色の上に光を足して、白く飛ばさずに眩しさだけ上げる
+    if (tier >= 2) {
+      ctx.shadowBlur = 0;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.18 + 0.12 * (tier - 2) + 0.15 * pulse;
+      const sheen = ctx.createLinearGradient(0, 0, 100, 100);
+      const sweep = (now * 0.35) % 1.6 - 0.3; // 光の帯が左上から右下へ流れる
+      sheen.addColorStop(0, 'rgba(255, 240, 200, 0.4)');
+      sheen.addColorStop(Math.max(0, Math.min(1, sweep)), 'rgba(255, 255, 255, 1)');
+      sheen.addColorStop(1, 'rgba(255, 200, 120, 0.4)');
+      ctx.fillStyle = sheen;
+      for (const part of this.parts) ctx.fill(part);
+    }
     ctx.restore();
   }
 
@@ -245,11 +259,7 @@ export class Siberia {
   }
 }
 
-function mix3(a, b, t) {
-  return a.map((v, i) => v + (b[i] - v) * t);
-}
-
 function mix(a, b, t) {
-  const c = mix3(a, b, t).map(Math.round);
+  const c = a.map((v, i) => Math.round(v + (b[i] - v) * t));
   return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
 }
