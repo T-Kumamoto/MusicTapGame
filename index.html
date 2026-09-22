@@ -1,452 +1,162 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>スマホ曲で遊べる3レーン音ゲー</title>
-    <style>
-        * {
-            box-sizing: border-box;
-            user-select: none;
-            -webkit-user-select: none;
-        }
-        body {
-            margin: 0;
-            padding: 0;
-            background-color: #121212;
-            color: #fff;
-            font-family: sans-serif;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            height: 100vh;
-        }
-
-        /* 画面上部の UI */
-        #ui-container {
-            width: 100%;
-            max-width: 400px;
-            padding: 10px;
-            text-align: center;
-            background-color: #1e1e1e;
-            z-index: 10;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
-        }
-        
-        /* 難易度選択ボタン */
-        .difficulty-container {
-            display: flex;
-            justify-content: center;
-            gap: 8px;
-            margin-bottom: 8px;
-        }
-        .diff-btn {
-            padding: 6px 12px;
-            border: 2px solid #555;
-            background-color: #2a2a2a;
-            color: #aaa;
-            font-size: 12px;
-            font-weight: bold;
-            border-radius: 6px;
-            cursor: pointer;
-        }
-        .diff-btn.selected {
-            border-color: #00e676;
-            color: #fff;
-            background-color: #1b4d2e;
-        }
-
-        .info-panel {
-            display: flex;
-            justify-content: space-around;
-            font-size: 18px;
-            font-weight: bold;
-            margin-top: 5px;
-        }
-        #judge-text {
-            height: 24px;
-            font-size: 18px;
-            font-weight: bold;
-            color: #ffeb3b;
-            margin-top: 5px;
-        }
-
-        /* ゲームメイン画面 */
-        #game-container {
-            position: relative;
-            width: 100%;
-            max-width: 400px;
-            flex-grow: 1;
-            background: linear-gradient(180deg, #1a1a2e 0%, #16213e 100%);
-            overflow: hidden;
-            border-left: 2px solid #333;
-            border-right: 2px solid #333;
-        }
-
-        /* レーン境界線 */
-        .lane-border {
-            position: absolute;
-            top: 0;
-            bottom: 0;
-            width: 1px;
-            background-color: rgba(255, 255, 255, 0.1);
-        }
-
-        /* 判定ライン */
-        #judge-line {
-            position: absolute;
-            bottom: 80px; /* タップエリアのすぐ上 */
-            left: 0;
-            width: 100%;
-            height: 4px;
-            background-color: #ff4081;
-            box-shadow: 0 0 10px #ff4081;
-            z-index: 2;
-        }
-
-        /* ノーツ */
-        .note {
-            position: absolute;
-            width: 30%;
-            height: 20px;
-            border-radius: 10px;
-            z-index: 3;
-            box-shadow: 0 0 8px currentColor;
-        }
-        .note-0 { background-color: #00e676; color: #00e676; left: 1.66%; }
-        .note-1 { background-color: #00b0ff; color: #00b0ff; left: 35%; }
-        .note-2 { background-color: #ff4081; color: #ff4081; left: 68.33%; }
-
-        /* タップエリア（ボタン） */
-        #touch-area {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            width: 100%;
-            height: 80px;
-            display: flex;
-            z-index: 4;
-            background-color: rgba(0, 0, 0, 0.4);
-        }
-        .lane-button {
-            flex: 1;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-            font-weight: bold;
-            opacity: 0.6;
-            transition: opacity 0.05s, background-color 0.05s;
-        }
-        .lane-button:active, .lane-button.active {
-            opacity: 1;
-            background-color: rgba(255, 255, 255, 0.2);
-        }
-        .btn-0 { border-top: 4px solid #00e676; }
-        .btn-1 { border-top: 4px solid #00b0ff; }
-        .btn-2 { border-top: 4px solid #ff4081; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#1b1238">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>MusicTapGame</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@500;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+  <canvas id="stage"></canvas>
 
-    <div id="ui-container">
-        <!-- 難易度選択 -->
-        <div class="difficulty-container">
-            <button class="diff-btn" data-diff="EASY">EASY</button>
-            <button class="diff-btn selected" data-diff="NORMAL">NORMAL</button>
-            <button class="diff-btn" data-diff="HARD">HARD</button>
-        </div>
-
-        <input type="file" id="audio-file" accept="audio/*">
-        <div class="info-panel">
-            <div>SCORE: <span id="score">0</span></div>
-            <div>COMBO: <span id="combo">0</span></div>
-        </div>
-        <div id="judge-text">曲を選択してください</div>
+  <!-- ホーム: 曲ライブラリ -->
+  <section id="screen-home" class="screen">
+    <header class="home-header">
+      <h1 class="logo">Music<span>Tap</span></h1>
+      <button class="icon-btn" id="open-settings" aria-label="設定">⚙</button>
+    </header>
+    <div class="home-actions">
+      <label class="btn primary">
+        ＋ 曲を追加
+        <input type="file" id="file-input" accept="audio/*,.mp3,.m4a,.wav,.ogg" hidden>
+      </label>
+      <button class="btn" id="demo-song">デモ曲を作る</button>
     </div>
+    <p class="hint">mp3 などの音楽ファイルを選ぶと、自動で譜面を作ります。曲は端末の中だけに保存されます。</p>
+    <ul id="song-list" class="song-list"></ul>
+  </section>
 
-    <div id="game-container">
-        <!-- レーン区切り線 -->
-        <div class="lane-border" style="left: 33.33%;"></div>
-        <div class="lane-border" style="left: 66.66%;"></div>
-
-        <!-- 判定ライン -->
-        <div id="judge-line"></div>
-
-        <!-- タップエリア -->
-        <div id="touch-area">
-            <div class="lane-button btn-0" id="btn-0">1</div>
-            <div class="lane-button btn-1" id="btn-1">2</div>
-            <div class="lane-button btn-2" id="btn-2">3</div>
-        </div>
+  <!-- 曲詳細: 難易度選択 -->
+  <section id="screen-song" class="screen" hidden>
+    <header class="bar">
+      <button class="icon-btn" data-back aria-label="戻る">‹</button>
+      <div class="bar-title">
+        <div id="song-title" class="song-title"></div>
+        <div id="song-meta" class="song-meta"></div>
+      </div>
+    </header>
+    <div id="difficulty-list" class="difficulty-list"></div>
+    <div class="song-actions">
+      <button class="btn primary big" id="start-game">LIVE START</button>
+      <button class="btn small ghost" id="regenerate">譜面を作り直す</button>
     </div>
+  </section>
 
-    <script>
-        // 難易度ごとのパラメータ設定
-        const DIFFICULTY_SETTINGS = {
-            EASY: {
-                fallTime: 1.6,      // ゆっくり落ちてくる（秒）
-                threshold: 1.45,   // ノーツ少なめ
-                minInterval: 0.35  // ノーツ間隔を広くする
-            },
-            NORMAL: {
-                fallTime: 1.2,      // ふつうの速度
-                threshold: 1.30,   // 標準的な量
-                minInterval: 0.25  
-            },
-            HARD: {
-                fallTime: 0.85,     // 速く落ちてくる
-                threshold: 1.15,   // ノーツ多め
-                minInterval: 0.16  // 詰まった連続ノーツが発生
-            }
-        };
+  <!-- 解析中 -->
+  <section id="screen-loading" class="screen center" hidden>
+    <div class="loading-card">
+      <div id="loading-text">解析中…</div>
+      <div class="progress"><div id="loading-bar"></div></div>
+    </div>
+  </section>
 
-        let currentDiff = 'NORMAL';
+  <!-- プレイ中 -->
+  <section id="screen-play" class="screen passthrough" hidden>
+    <button class="icon-btn pause-btn" id="pause-btn" aria-label="一時停止">Ⅱ</button>
+    <div id="pause-menu" class="overlay" hidden>
+      <div class="menu-card">
+        <h2>PAUSE</h2>
+        <button class="btn primary" id="resume-btn">再開</button>
+        <button class="btn" id="retry-btn">リトライ</button>
+        <button class="btn ghost" id="quit-btn">やめる</button>
+      </div>
+    </div>
+  </section>
 
-        // ゲーム状態
-        let audioCtx, analyser, sourceNode;
-        let audioBuffer = null;
-        let startTime = 0;
-        let isPlaying = false;
-        let score = 0;
-        let combo = 0;
+  <!-- リザルト -->
+  <section id="screen-result" class="screen" hidden>
+    <div class="result">
+      <div id="result-song" class="result-song"></div>
+      <div id="result-rank" class="rank"></div>
+      <div id="result-badge" class="badge"></div>
+      <div id="result-score" class="result-score">0</div>
+      <div id="result-best" class="result-best"></div>
+      <table class="result-table">
+        <tr class="perfect"><th>PERFECT</th><td id="r-perfect"></td></tr>
+        <tr class="great"><th>GREAT</th><td id="r-great"></td></tr>
+        <tr class="good"><th>GOOD</th><td id="r-good"></td></tr>
+        <tr class="miss"><th>MISS</th><td id="r-miss"></td></tr>
+        <tr><th>MAX COMBO</th><td id="r-combo"></td></tr>
+        <tr><th>タイミング</th><td id="r-timing"></td></tr>
+      </table>
+      <div class="result-actions">
+        <button class="btn primary" id="result-retry">リトライ</button>
+        <button class="btn" id="result-back">曲選択へ</button>
+      </div>
+    </div>
+  </section>
 
-        let generatedNotes = []; 
-        let activeNotes = [];    
+  <!-- 設定 -->
+  <section id="screen-settings" class="screen" hidden>
+    <header class="bar">
+      <button class="icon-btn" data-back aria-label="戻る">‹</button>
+      <div class="bar-title"><div class="song-title">設定</div></div>
+    </header>
+    <div class="settings">
+      <label class="setting">
+        <span>ノーツ速度 <b id="speed-value"></b></span>
+        <input type="range" id="set-speed" min="1" max="12" step="0.5">
+      </label>
+      <label class="setting">
+        <span>判定タイミング <b id="offset-value"></b></span>
+        <input type="range" id="set-offset" min="-250" max="250" step="1">
+        <small>叩くのが遅れがちならプラスへ。下のタイミング調整で自動測定できます。</small>
+      </label>
+      <button class="btn" id="open-calib">タイミング調整</button>
+      <label class="setting">
+        <span>曲の音量 <b id="music-vol-value"></b></span>
+        <input type="range" id="set-music-vol" min="0" max="100" step="1">
+      </label>
+      <label class="setting">
+        <span>タップ音の音量 <b id="hit-vol-value"></b></span>
+        <input type="range" id="set-hit-vol" min="0" max="100" step="1">
+      </label>
+      <div class="setting">
+        <span>背景画像</span>
+        <div class="row">
+          <label class="btn small">画像を選ぶ<input type="file" id="bg-input" accept="image/*" hidden></label>
+          <button class="btn small ghost" id="bg-clear">なしにする</button>
+        </div>
+      </div>
+      <label class="setting">
+        <span>背景の暗さ <b id="bg-dim-value"></b></span>
+        <input type="range" id="set-bg-dim" min="0" max="95" step="1">
+      </label>
+      <label class="setting check">
+        <input type="checkbox" id="set-auto">
+        <span>オートプレイ（譜面の確認用）</span>
+      </label>
+    </div>
+  </section>
 
-        // DOM要素
-        const fileInput = document.getElementById('audio-file');
-        const scoreEl = document.getElementById('score');
-        const comboEl = document.getElementById('combo');
-        const judgeTextEl = document.getElementById('judge-text');
-        const gameContainer = document.getElementById('game-container');
-        const diffBtns = document.querySelectorAll('.diff-btn');
+  <!-- タイミング調整 -->
+  <section id="screen-calib" class="screen" hidden>
+    <header class="bar">
+      <button class="icon-btn" data-back aria-label="戻る">‹</button>
+      <div class="bar-title"><div class="song-title">タイミング調整</div></div>
+    </header>
+    <div class="calib">
+      <p>「スタート」を押すと一定のリズムで音が鳴ります。<br>画面を見ずに、音に合わせて下の円をタップしてください。</p>
+      <div id="calib-pad" class="calib-pad">TAP</div>
+      <div id="calib-result" class="calib-result">―</div>
+      <div class="row">
+        <button class="btn primary" id="calib-start">スタート</button>
+        <button class="btn" id="calib-apply" disabled>この値を使う</button>
+      </div>
+    </div>
+  </section>
 
-        // 難易度ボタンの切り替え処理
-        diffBtns.forEach(btn => {
-            btn.addEventListener('click', () => {
-                if (isPlaying) return; // プレイ中は変更不可
+  <div id="toast" class="toast" hidden></div>
 
-                diffBtns.forEach(b => b.classList.remove('selected'));
-                btn.classList.add('selected');
-                currentDiff = btn.getAttribute('data-diff');
-
-                // すでに曲が読み込まれている場合は再解析
-                if (audioBuffer) {
-                    judgeTextEl.innerText = "難易度を変更して再解析中...";
-                    setTimeout(() => {
-                        generateNotesFromAudio(audioBuffer);
-                        judgeTextEl.innerText = "タップしてスタート！";
-                    }, 50);
-                }
-            });
-        });
-
-        // 音声ファイル読み込み
-        fileInput.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            judgeTextEl.innerText = "曲を解析中...";
-            
-            const arrayBuffer = await file.arrayBuffer();
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-
-            // ノーツの事前計算
-            generateNotesFromAudio(audioBuffer);
-
-            judgeTextEl.innerText = "タップしてスタート！";
-            document.body.addEventListener('click', startGame, { once: true });
-            document.body.addEventListener('touchstart', startGame, { once: true });
-        });
-
-        // オーディオ解析してノーツ生成
-        function generateNotesFromAudio(buffer) {
-            generatedNotes = [];
-            const settings = DIFFICULTY_SETTINGS[currentDiff];
-
-            const rawData = buffer.getChannelData(0);
-            const sampleRate = buffer.sampleRate;
-            
-            const chunkSize = Math.floor(sampleRate * 0.02);
-            let lastNoteTime = -1;
-
-            let localEnergies = [];
-            for (let i = 0; i < rawData.length; i += chunkSize) {
-                let sum = 0;
-                for (let j = 0; j < chunkSize && (i + j) < rawData.length; j++) {
-                    sum += rawData[i + j] * rawData[i + j];
-                }
-                localEnergies.push(Math.sqrt(sum / chunkSize));
-            }
-
-            const windowSize = 20;
-            for (let i = 0; i < localEnergies.length; i++) {
-                let start = Math.max(0, i - windowSize);
-                let end = Math.min(localEnergies.length, i + windowSize);
-                let avg = 0;
-                for (let j = start; j < end; j++) avg += localEnergies[j];
-                avg /= (end - start);
-
-                const time = (i * chunkSize) / sampleRate;
-
-                // 選択された難易度のパラメータで判定
-                if (localEnergies[i] > avg * settings.threshold && (time - lastNoteTime) > settings.minInterval) {
-                    const lane = Math.floor(Math.random() * 3);
-                    generatedNotes.push({
-                        time: time,
-                        lane: lane,
-                        spawned: false
-                    });
-                    lastNoteTime = time;
-                }
-            }
-        }
-
-        // ゲーム開始
-        function startGame() {
-            if (isPlaying) return;
-            isPlaying = true;
-            score = 0;
-            combo = 0;
-            updateUI();
-            judgeTextEl.innerText = "PLAY!";
-
-            sourceNode = audioCtx.createBufferSource();
-            sourceNode.buffer = audioBuffer;
-            sourceNode.connect(audioCtx.destination);
-
-            startTime = audioCtx.currentTime;
-            sourceNode.start(0);
-
-            requestAnimationFrame(gameLoop);
-        }
-
-        // 毎フレーム更新
-        function gameLoop() {
-            if (!isPlaying) return;
-
-            const settings = DIFFICULTY_SETTINGS[currentDiff];
-            const currentTime = audioCtx.currentTime - startTime;
-
-            // --- 1. ノーツ生成 ---
-            for (let note of generatedNotes) {
-                if (!note.spawned && currentTime >= (note.time - settings.fallTime)) {
-                    note.spawned = true;
-                    createNoteElement(note);
-                }
-            }
-
-            // --- 2. 落下 & MISS判定 ---
-            const containerHeight = gameContainer.clientHeight;
-            const judgeLineBottomPx = 80;
-            const judgeLineY = containerHeight - judgeLineBottomPx;
-
-            for (let i = activeNotes.length - 1; i >= 0; i--) {
-                const noteObj = activeNotes[i];
-                const progress = (currentTime - (noteObj.data.time - settings.fallTime)) / settings.fallTime;
-                const currentY = progress * judgeLineY;
-
-                noteObj.element.style.top = `${currentY}px`;
-
-                if (currentTime > noteObj.data.time + 0.15) {
-                    showJudgement("MISS");
-                    combo = 0;
-                    updateUI();
-                    noteObj.element.remove();
-                    activeNotes.splice(i, 1);
-                }
-            }
-
-            if (currentTime < audioBuffer.duration + 2) {
-                requestAnimationFrame(gameLoop);
-            } else {
-                judgeTextEl.innerText = "FINISH!";
-                isPlaying = false;
-            }
-        }
-
-        function createNoteElement(noteData) {
-            const el = document.createElement('div');
-            el.className = `note note-${noteData.lane}`;
-            el.style.top = '0px';
-            gameContainer.appendChild(el);
-
-            activeNotes.push({
-                data: noteData,
-                element: el
-            });
-        }
-
-        // タップ判定
-        function handleTap(lane) {
-            if (!isPlaying) return;
-
-            const currentTime = audioCtx.currentTime - startTime;
-            const targetIndex = activeNotes.findIndex(n => n.data.lane === lane);
-            if (targetIndex === -1) return;
-
-            const targetNote = activeNotes[targetIndex];
-            const timeDiff = Math.abs(currentTime - targetNote.data.time);
-
-            if (timeDiff <= 0.08) {
-                showJudgement("PERFECT!");
-                score += 1000;
-                combo++;
-                removeNote(targetIndex);
-            } else if (timeDiff <= 0.15) {
-                showJudgement("GREAT");
-                score += 500;
-                combo++;
-                removeNote(targetIndex);
-            } else if (timeDiff <= 0.22) {
-                showJudgement("GOOD");
-                score += 200;
-                combo = 0;
-                removeNote(targetIndex);
-            }
-            updateUI();
-        }
-
-        function removeNote(index) {
-            activeNotes[index].element.remove();
-            activeNotes.splice(index, 1);
-        }
-
-        function showJudgement(text) {
-            judgeTextEl.innerText = text;
-        }
-
-        function updateUI() {
-            scoreEl.innerText = score;
-            comboEl.innerText = combo;
-        }
-
-        // 操作イベント設定
-        const lanes = [0, 1, 2];
-        lanes.forEach(lane => {
-            const btn = document.getElementById(`btn-${lane}`);
-            
-            const trigger = (e) => {
-                e.preventDefault();
-                btn.classList.add('active');
-                setTimeout(() => btn.classList.remove('active'), 100);
-                handleTap(lane);
-            };
-
-            btn.addEventListener('touchstart', trigger, { passive: false });
-            btn.addEventListener('mousedown', trigger);
-        });
-
-        window.addEventListener('keydown', (e) => {
-            if (e.repeat) return;
-            if (e.key === '1' || e.key === 'a' || e.key === 'A') handleTap(0);
-            if (e.key === '2' || e.key === 's' || e.key === 'S') handleTap(1);
-            if (e.key === '3' || e.key === 'd' || e.key === 'D') handleTap(2);
-        });
-    </script>
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>
