@@ -5,6 +5,8 @@
 
 **▶ 遊ぶ: https://t-kumamoto.github.io/MusicTapGame/**(ホーム画面に追加するとアプリのように全画面で遊べる)
 
+配布用ファイルセット(zip)は [リリース](https://github.com/T-Kumamoto/MusicTapGame/releases/latest) からダウンロードできる。
+
 ![コンボが続くと鎌と金槌が大きく輝く(左から 18 / 45 / 65 / 109 / 204 コンボ)](docs/combo-stages.jpg)
 
 ## 遊び方
