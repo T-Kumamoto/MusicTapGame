@@ -160,7 +160,14 @@ async function importSong(arrayBuffer, title, type, extra = {}) {
   const buffer = await audio.decode(arrayBuffer);
   state.buffer = buffer;
   state.bufferId = id;
-  if (existing && existing.chartVersion === CHART_VERSION) return { song: existing, existed: true };
+  if (existing && existing.chartVersion === CHART_VERSION) {
+    // 自分で追加済みの曲が初期曲にもなった場合は、クレジットなどだけ付け足す
+    if (Object.keys(extra).length) {
+      Object.assign(existing, extra);
+      await songs.put(existing);
+    }
+    return { song: existing, existed: true };
+  }
   const analysis = await analyzeBuffer(buffer, id);
   const song = {
     id,
@@ -190,8 +197,9 @@ async function builtinList() {
         list.push({
           key: `file:${entry.file}`,
           title: entry.title,
+          extra: entry.credit ? { credit: entry.credit } : {},
           load: async () => {
-            const r = await fetch(`songs/${entry.file}`);
+            const r = await fetch(`songs/${encodeURIComponent(entry.file)}`);
             if (!r.ok) throw new Error(`songs/${entry.file}: ${r.status}`);
             return { bytes: await r.arrayBuffer(), type: r.headers.get('content-type') || 'audio/mpeg' };
           },
@@ -225,7 +233,7 @@ async function installBuiltins(force = false) {
       const { bytes, type } = await b.load();
       const label = `初期曲を準備中… ${i + 1}/${todo.length}「${b.title}」`;
       setLoading(label, i / todo.length);
-      await importSong(bytes, b.title, type, { builtin: b.key });
+      await importSong(bytes, b.title, type, { builtin: b.key, ...(b.extra || {}) });
       installed.add(b.key);
     } catch (err) {
       console.error(err);
@@ -294,7 +302,7 @@ async function openSong(song, replaceCurrent = false) {
 function renderSong() {
   const song = state.song;
   $('song-title').textContent = song.title;
-  $('song-meta').textContent = `BPM ${Math.round(song.bpm)} · ${fmtTime(song.duration)}`;
+  $('song-meta').textContent = `BPM ${Math.round(song.bpm)} · ${fmtTime(song.duration)}${song.credit ? ` · ♪ ${song.credit}` : ''}`;
   const list = $('difficulty-list');
   list.replaceChildren();
   for (const d of DIFFS) {

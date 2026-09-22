@@ -21,6 +21,17 @@ PC ではキーボードの `1` `2` `3` `4` `5`(または `D` `F` `Space` `J` `K
 初めて遊ぶ時は **設定 → タイミング調整** で判定のずれを測っておくと快適。
 Bluetooth イヤホンは遅延が大きいので特に必要。
 
+## 初期曲
+
+初回起動時にライブラリへ入る曲。
+
+| 曲 | クレジット |
+|---|---|
+| Starlight Parade / Neon Rush / Moonlight Letter | アプリ内で合成(`js/demo-song.js`) |
+| ソ連国歌 | すーぱーういるす / [ニコニ・コモンズ nc241752](https://commons.nicovideo.jp/works/nc241752)(利用許可範囲: ネット全般) |
+
+同梱曲の追加方法は [songs/README.md](songs/README.md)。
+
 ## 開発
 
 ビルド不要の素の ES Modules。ローカルでは静的サーバーで開く(ES Modules は `file://` では動かない)。
