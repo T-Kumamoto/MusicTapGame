@@ -113,3 +113,9 @@ npm run build
 - [x] 初期曲(ソ連・モルドバ・沿ドニエストル国歌)
 - [x] 鎌と金槌・シベリア送りの演出
 - [ ] 必要なら Capacitor で Android アプリ化
+
+## 免責事項 / Disclaimer
+
+本作は純粋なプログラミング学習およびエンターテインメントを目的とした技術デモ・個人制作物です。特定の国家、地域、政治体制、思想信条を支持・賞賛・批判・宣伝する意図は一切ありません。
+
+This project is an educational and entertainment technology demo. It does not advocate, endorse, or promote any specific country, region, political ideology, or regime.

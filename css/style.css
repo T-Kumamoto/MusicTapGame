@@ -503,6 +503,18 @@ input[type='checkbox'] {
   accent-color: var(--pink);
 }
 
+.disclaimer {
+  margin-top: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.disclaimer p {
+  margin: 6px 0 0;
+}
+
 /* ---------- タイミング調整 ---------- */
 
 .calib {
