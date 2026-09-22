@@ -2,6 +2,7 @@ import { AudioEngine } from './audio.js';
 import { Renderer } from './renderer.js';
 import { Input } from './input.js';
 import { Game, rankOf } from './game.js';
+import { SIBERIA_MISS_RATE } from './soviet.js';
 import { songs, assets, fileId, loadSettings, saveSettings, fallTimeFor, CHART_VERSION } from './storage.js';
 import { downmix } from './chart/analyze.js';
 
@@ -400,7 +401,7 @@ function startGame(isRetry) {
   state.running = true;
   state.paused = false;
   renderer.setLanes(chart.lanes);
-  renderer.particles = [];
+  renderer.reset();
   input.attach(game);
   audio.setVolumes(settings.musicVolume / 100, settings.hitVolume / 100);
   audio.play(state.buffer, Math.max(1.5, fallTime - firstNote + 1));
@@ -496,7 +497,10 @@ async function finishGame() {
   $('result-song').textContent = `${song.title} ・ ${state.difficulty}`;
   $('result-rank').textContent = rank;
   $('result-rank').style.setProperty('--rank-color', { S: '#ffd35c', A: '#ff6fb5', B: '#5ce1ff', C: '#6dffb0', D: '#b3a9d6' }[rank]);
-  $('result-badge').textContent = ap ? 'ALL PERFECT' : fc ? 'FULL COMBO' : '';
+  const siberia = game.counts.MISS / game.total >= SIBERIA_MISS_RATE;
+  $('result-badge').textContent = ap ? 'ALL PERFECT' : fc ? 'FULL COMBO' : siberia ? 'シベリア送り' : '';
+  $('result-badge').classList.toggle('siberia', siberia && !fc);
+  $('screen-result').classList.toggle('frozen', siberia && !fc);
   $('r-perfect').textContent = game.counts.PERFECT;
   $('r-great').textContent = game.counts.GREAT;
   $('r-good').textContent = game.counts.GOOD;

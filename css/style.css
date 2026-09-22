@@ -404,6 +404,23 @@ body {
   letter-spacing: 0.15em;
   color: var(--gold);
 }
+.badge.siberia {
+  font-size: 30px;
+  letter-spacing: 0.1em;
+  color: #cdeeff;
+  text-shadow: 0 0 12px rgba(140, 210, 255, 0.9);
+  animation: shiver 0.12s linear 6;
+}
+/* シベリア送りのリザルトは凍りついた背景にする */
+#screen-result.frozen {
+  background:
+    radial-gradient(120% 70% at 50% 0%, rgba(200, 235, 255, 0.35), transparent 65%),
+    linear-gradient(180deg, #1c3552, #0a1424);
+}
+@keyframes shiver {
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
+}
 .result-score {
   font-size: 44px;
   font-weight: 800;

@@ -11,6 +11,8 @@ const NOTE_COLORS = {
 const GRADE_COLORS = { PERFECT: '#ffe47a', GREAT: '#ff8fcf', GOOD: '#7fe9ff', MISS: '#a79fc4' };
 const FONT = '"M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", "Yu Gothic UI", sans-serif';
 
+import { Emblem, Siberia, SIBERIA_STREAK, COMBO_BURST_EVERY } from './soviet.js';
+
 // 奥の端でのレーン幅(手前を 1 とした比)
 const FAR_SCALE = 0.14;
 // 遠近の強さ。0 なら等速、大きいほど奥でゆっくり手前で速い
@@ -28,6 +30,8 @@ export class Renderer {
     this.comboBump = 0;
     this.bgImage = null;
     this.bgDim = 0.55;
+    this.emblem = new Emblem();
+    this.siberia = new Siberia();
     this.resize();
     window.addEventListener('resize', () => this.resize());
   }
@@ -47,6 +51,15 @@ export class Renderer {
     this.judgeY = H * (H > W ? 0.83 : 0.85);
     this.laneAreaW = Math.min(W * 0.96, H * 0.72);
     this.ui = Math.min(W, H * 0.6) / 400;
+  }
+
+  // 新しいプレイの前に演出を消す
+  reset() {
+    this.particles = [];
+    this.rings = [];
+    this.popup = null;
+    this.emblem.reset();
+    this.siberia.reset();
   }
 
   setLanes(lanes) {
@@ -81,8 +94,12 @@ export class Renderer {
         continue;
       }
       this.popup = { grade: e.grade, t: now };
-      if (e.grade === 'MISS') continue;
+      if (e.grade === 'MISS') {
+        if (e.missStreak % SIBERIA_STREAK === 0) this.siberia.trigger(this.W, this.H);
+        continue;
+      }
       this.comboBump = 1;
+      if (e.combo % COMBO_BURST_EVERY === 0) this.emblem.burst();
       const x = this.laneX(e.lane + 0.5, 1);
       const color = GRADE_COLORS[e.grade];
       const strong = e.grade === 'PERFECT';
@@ -105,7 +122,9 @@ export class Renderer {
     }
   }
 
-  updateEffects(dt) {
+  updateEffects(dt, combo) {
+    this.emblem.update(dt, combo);
+    this.siberia.update(dt);
     for (const p of this.particles) {
       p.x += p.vx * dt;
       p.y += p.vy * dt;
@@ -124,7 +143,7 @@ export class Renderer {
   draw(state) {
     const { ctx, W, H } = this;
     const { now, dt } = state;
-    this.updateEffects(dt);
+    this.updateEffects(dt, state.game ? state.game.combo : 0);
     ctx.clearRect(0, 0, W, H);
 
     // 直前の拍からの経過時間でステージを脈打たせる
@@ -133,10 +152,14 @@ export class Renderer {
     const pulse = now > 0 && lastBeat >= 0 ? Math.exp(-(now - beats[lastBeat]) * 7) : 0;
 
     this.drawBackground(now, pulse);
+    // レーンの奥、消失点のあたりに鎌と金槌を置く
+    const emblemSize = Math.min(W, H) * 0.24;
+    this.emblem.draw(ctx, this.cx, this.horizonY + emblemSize * 0.05, emblemSize, pulse);
     this.drawStage(state, pulse);
     this.drawNotes(state);
     this.drawEffects();
     this.drawHud(state);
+    this.siberia.draw(ctx, W, H, this.ui);
   }
 
   drawBackground(now, pulse) {

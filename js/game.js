@@ -44,6 +44,7 @@ export class Game {
     this.counts = { PERFECT: 0, GREAT: 0, GOOD: 0, MISS: 0 };
     this.combo = 0;
     this.maxCombo = 0;
+    this.missStreak = 0;
     this.weightSum = 0;
     this.judged = 0;
     this.timing = [];
@@ -72,10 +73,23 @@ export class Game {
     this.counts[grade]++;
     this.judged++;
     this.weightSum += WEIGHT[grade];
-    if (grade === 'MISS') this.combo = 0;
-    else this.maxCombo = Math.max(this.maxCombo, ++this.combo);
+    if (grade === 'MISS') {
+      this.combo = 0;
+      this.missStreak++;
+    } else {
+      this.maxCombo = Math.max(this.maxCombo, ++this.combo);
+      this.missStreak = 0;
+    }
     if (dt !== null) this.timing.push(dt);
-    this.events.push({ type: 'judge', grade, lane: note.lane, kind: note.type, part, combo: this.combo });
+    this.events.push({
+      type: 'judge',
+      grade,
+      lane: note.lane,
+      kind: note.type,
+      part,
+      combo: this.combo,
+      missStreak: this.missStreak,
+    });
   }
 
   press(pointerId, lane, t) {

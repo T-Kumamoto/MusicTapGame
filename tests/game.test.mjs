@@ -88,3 +88,13 @@ test('オートプレイは全部 PERFECT', () => {
   assert.equal(g.score, 1000000);
   assert.equal(rankOf(g.score), 'S');
 });
+
+test('連続 MISS を数え、成功で 0 に戻る', () => {
+  const notes = Array.from({ length: 10 }, (_, i) => ({ t: 1 + i, lane: 0, type: 'tap' }));
+  const g = new Game(chart(notes));
+  g.update(8.5); // 1〜8 秒のノーツが MISS
+  assert.equal(g.missStreak, 8);
+  assert.equal(g.events.filter((e) => e.type === 'judge').at(-1).missStreak, 8);
+  g.press('a', 0, 9);
+  assert.equal(g.missStreak, 0);
+});
