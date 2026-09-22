@@ -1,7 +1,7 @@
 // オフラインでも起動できるようにアプリ本体をキャッシュする。
 // 更新がすぐ反映されるよう、まずネットワークを見て、繋がらない時だけキャッシュを使う。
 
-const CACHE = 'music-tap-game-v2';
+const CACHE = 'music-tap-game-v3';
 const SHELL = [
   './',
   'index.html',
@@ -39,8 +39,11 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const { request } = e;
   if (request.method !== 'GET') return;
+  // GitHub Pages は 10 分間ブラウザにキャッシュさせるので、そのままだと更新直後に
+  // 新しい HTML と古い JS が混ざる。毎回サーバーに更新の有無を確かめる(変わっていなければ 304 で軽い)。
+  const fresh = request.mode === 'navigate' ? fetch(request.url, { cache: 'no-cache' }) : fetch(request, { cache: 'no-cache' });
   e.respondWith(
-    fetch(request)
+    fresh
       .then((res) => {
         if (res.ok && new URL(request.url).origin === location.origin) {
           const copy = res.clone();
