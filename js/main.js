@@ -233,9 +233,17 @@ async function installBuiltins(force = false) {
   const keys = new Set(list.map((b) => b.key));
   const installed = installedBuiltins();
 
-  // 初期曲から外れた曲は片付ける(自分で追加した曲には builtin が付かないので残る)
+  // 初期曲から外れた曲は片付ける(自分で追加した曲には builtin が付かないので残る)。
+  // 残る初期曲はクレジットなどを songs/index.json の最新に合わせる
+  const byKey = new Map(list.map((b) => [b.key, b]));
   for (const song of await songs.all()) {
-    if (song.builtin && !keys.has(song.builtin)) await songs.remove(song.id);
+    if (!song.builtin) continue;
+    const b = byKey.get(song.builtin);
+    if (!b) {
+      await songs.remove(song.id);
+    } else if (Object.entries(b.extra).some(([k, v]) => song[k] !== v)) {
+      await songs.put(Object.assign(song, b.extra));
+    }
   }
   for (const key of installed) if (!keys.has(key)) installed.delete(key);
 
