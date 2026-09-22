@@ -3,10 +3,12 @@
 //   - シベリア送り: MISS が続くと画面が凍りつき、雪とともに表示される
 // 記号は端末によってフォントに無いことがある(☭ が □ になる)ので、図形で描く。
 
-// 何コンボから光り始め、何コンボで最大になるか
-const GLOW_START = 10;
-const GLOW_FULL = 100;
-export const COMBO_BURST_EVERY = 50;
+// コンボごとの演出の段階
+//   10 コンボごとに一段大きくなり画面中央へ寄る(GROW_STEPS 段で最大)
+//   50 でずっと輝き、100・200 でさらに輝く。各段に達した瞬間は光が弾ける
+const GROW_EVERY = 10;
+const GROW_STEPS = 10;
+export const SHINE_TIERS = [50, 100, 200];
 // 連続 MISS がこの数に達するたびにシベリア送り
 export const SIBERIA_STREAK = 8;
 // リザルトでシベリア送りになる MISS の割合
@@ -49,79 +51,124 @@ function emblemParts() {
 export class Emblem {
   constructor() {
     this.parts = typeof Path2D === 'function' ? emblemParts() : null;
-    this.glow = 0;
-    this.flash = 0;
+    this.sparkles = Array.from({ length: 10 }, (_, i) => ({ a: (i / 10) * Math.PI * 2, r: 0.75 + (i % 3) * 0.12 }));
+    this.reset();
   }
 
   reset() {
+    this.grow = 0; // 0: 奥で小さい 〜 1: 中央で最大
     this.glow = 0;
     this.flash = 0;
-  }
-
-  burst() {
-    this.flash = 1;
+    this.bump = 0;
+    this.combo = 0;
+    this.tier = 0;
   }
 
   update(dt, combo) {
-    const target = Math.max(0, Math.min(1, (combo - GLOW_START) / (GLOW_FULL - GLOW_START)));
-    // 光り始めはゆっくり、コンボが切れたらすっと消える
-    const rate = target > this.glow ? 1.5 : 4;
-    this.glow += (target - this.glow) * Math.min(1, rate * dt);
-    this.flash = Math.max(0, this.flash - dt * 1.4);
+    const prev = this.combo;
+    this.combo = combo;
+    const step = Math.min(Math.floor(combo / GROW_EVERY), GROW_STEPS);
+    if (step > Math.min(Math.floor(prev / GROW_EVERY), GROW_STEPS)) this.bump = 1;
+    for (const t of SHINE_TIERS) if (prev < t && combo >= t) this.flash = 1;
+    this.tier = SHINE_TIERS.filter((t) => combo >= t).length;
+
+    // 大きくなる時はふわっと、コンボが切れたらすっと戻る
+    const growTarget = step / GROW_STEPS;
+    this.grow += (growTarget - this.grow) * Math.min(1, (growTarget > this.grow ? 4 : 6) * dt);
+    // 50 コンボまではだんだん光り、そこからはずっと輝く
+    const glowTarget = this.tier ? 1 : Math.max(0, (combo - GROW_EVERY) / (SHINE_TIERS[0] - GROW_EVERY)) * 0.6;
+    this.glow += (glowTarget - this.glow) * Math.min(1, (glowTarget > this.glow ? 2 : 5) * dt);
+    this.flash = Math.max(0, this.flash - dt * 1.2);
+    this.bump = Math.max(0, this.bump - dt * 4);
   }
 
-  draw(ctx, cx, cy, size, pulse) {
+  // layout: { cx, topY, centerY, minSize, maxSize }
+  draw(ctx, layout, pulse, now) {
     if (!this.parts) return;
     const g = this.glow;
     const f = this.flash;
-    const scale = size / 100;
+    const tier = this.tier;
+    const ease = 1 - (1 - this.grow) ** 2;
+    const size = (layout.minSize + (layout.maxSize - layout.minSize) * ease) * (1 + 0.12 * this.bump);
+    const cx = layout.cx;
+    const cy = layout.topY + (layout.centerY - layout.topY) * ease;
+    const shine = Math.min(1.6, g * (0.75 + 0.25 * pulse) + f + 0.25 * Math.max(0, tier - 1));
 
     ctx.save();
-    // 後光(輝いている時だけ)
-    const halo = Math.min(1, g * (0.6 + 0.4 * pulse) + f);
-    if (halo > 0.02) {
-      ctx.globalCompositeOperation = 'lighter';
-      const r = size * (0.9 + 0.5 * f);
+    ctx.globalCompositeOperation = 'lighter';
+    if (shine > 0.02) {
+      // 後光。段階が上がるほど大きく白く
+      const r = size * (0.85 + 0.25 * tier + 0.5 * f);
       const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-      grad.addColorStop(0, `rgba(255, 200, 80, ${0.45 * halo})`);
-      grad.addColorStop(0.5, `rgba(255, 60, 40, ${0.18 * halo})`);
+      const core = tier >= 2 ? '255, 245, 210' : '255, 200, 80';
+      grad.addColorStop(0, `rgba(${core}, ${0.4 * Math.min(1, shine)})`);
+      grad.addColorStop(0.5, `rgba(255, 70, 40, ${0.16 * Math.min(1, shine)})`);
       grad.addColorStop(1, 'rgba(255, 60, 40, 0)');
       ctx.fillStyle = grad;
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
       ctx.fill();
-      // 放射状の光線
-      const rays = 12;
-      ctx.fillStyle = `rgba(255, 215, 120, ${0.12 * halo})`;
-      const spin = performance.now() / 4000;
-      for (let i = 0; i < rays; i++) {
-        const a = spin + (i / rays) * Math.PI * 2;
-        ctx.beginPath();
-        ctx.moveTo(cx, cy);
-        ctx.arc(cx, cy, r * 1.3, a - 0.07, a + 0.07);
-        ctx.closePath();
-        ctx.fill();
-      }
-      ctx.globalCompositeOperation = 'source-over';
+
+      // 光線。100 で本数が増え、200 で赤い光線が逆回転で重なる
+      const spin = now * 0.25;
+      this.rays(ctx, cx, cy, r * 1.35, tier >= 2 ? 18 : 12, spin, `rgba(255, 220, 130, ${0.1 * Math.min(1, shine)})`);
+      if (tier >= 3) this.rays(ctx, cx, cy, r * 1.6, 9, -spin * 1.6, `rgba(255, 70, 60, ${0.12 * (0.7 + 0.3 * pulse)})`);
     }
 
+    // 200 コンボ以上は周りを星が回る
+    if (tier >= 3) {
+      for (const sp of this.sparkles) {
+        const a = sp.a + now * 0.9;
+        const x = cx + Math.cos(a) * size * sp.r;
+        const y = cy + Math.sin(a) * size * sp.r * 0.9;
+        star(ctx, x, y, size * 0.05 * (0.7 + 0.5 * pulse), '#fff4c0');
+      }
+    }
+    ctx.globalCompositeOperation = 'source-over';
+
+    // 本体。光っていない時は暗い赤のシルエット、光るほど金色、100 以上は白金に近づく
+    const k = Math.max(g, f);
+    const whiten = tier >= 2 ? 0.35 + 0.15 * pulse : 0;
     ctx.translate(cx - size / 2, cy - size / 2);
-    ctx.scale(scale, scale);
-    // 光っていない時は暗い赤のシルエット、光るほど金色に
-    const alpha = 0.22 + 0.78 * Math.max(g, f);
+    ctx.scale(size / 100, size / 100);
     const fill = ctx.createLinearGradient(0, 0, 100, 100);
-    fill.addColorStop(0, mix([120, 30, 40], [255, 240, 170], Math.max(g, f)));
-    fill.addColorStop(1, mix([90, 20, 30], [255, 170, 40], Math.max(g, f)));
-    ctx.globalAlpha = alpha;
-    if (g > 0.05 || f > 0) {
-      ctx.shadowColor = 'rgba(255, 190, 60, 0.9)';
+    fill.addColorStop(0, mix(mix3([120, 30, 40], [255, 236, 160], k), [255, 255, 245], whiten));
+    fill.addColorStop(1, mix(mix3([90, 20, 30], [255, 165, 35], k), [255, 225, 150], whiten));
+    // 大きくなって譜面に重なっても邪魔しすぎないよう、不透明度は上限を設ける
+    ctx.globalAlpha = (0.25 + 0.65 * k) * (1 - 0.15 * ease);
+    if (k > 0.05) {
+      ctx.shadowColor = tier >= 2 ? 'rgba(255, 240, 190, 0.95)' : 'rgba(255, 190, 60, 0.9)';
       // shadowBlur は座標変換の影響を受けないので、画面上の px で指定する
-      ctx.shadowBlur = (6 + 22 * Math.max(g * (0.7 + 0.3 * pulse), f)) * scale;
+      ctx.shadowBlur = (6 + 20 * Math.min(1.5, shine)) * (size / 100);
     }
     ctx.fillStyle = fill;
     for (const part of this.parts) ctx.fill(part);
     ctx.restore();
   }
+
+  rays(ctx, cx, cy, r, count, spin, color) {
+    ctx.fillStyle = color;
+    for (let i = 0; i < count; i++) {
+      const a = spin + (i / count) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, r, a - 0.06, a + 0.06);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+}
+
+function star(ctx, x, y, r, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const rr = i % 2 ? r * 0.35 : r;
+    ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+  }
+  ctx.closePath();
+  ctx.fill();
 }
 
 export class Siberia {
@@ -198,7 +245,11 @@ export class Siberia {
   }
 }
 
+function mix3(a, b, t) {
+  return a.map((v, i) => v + (b[i] - v) * t);
+}
+
 function mix(a, b, t) {
-  const c = a.map((v, i) => Math.round(v + (b[i] - v) * t));
+  const c = mix3(a, b, t).map(Math.round);
   return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
 }

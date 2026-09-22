@@ -1,7 +1,7 @@
 // オフラインでも起動できるようにアプリ本体をキャッシュする。
 // 更新がすぐ反映されるよう、まずネットワークを見て、繋がらない時だけキャッシュを使う。
 
-const CACHE = 'music-tap-game-v5';
+const CACHE = 'music-tap-game-v6';
 const SHELL = [
   './',
   'index.html',

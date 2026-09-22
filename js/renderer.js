@@ -11,7 +11,7 @@ const NOTE_COLORS = {
 const GRADE_COLORS = { PERFECT: '#ffe47a', GREAT: '#ff8fcf', GOOD: '#7fe9ff', MISS: '#a79fc4' };
 const FONT = '"M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", "Yu Gothic UI", sans-serif';
 
-import { Emblem, Siberia, SIBERIA_STREAK, COMBO_BURST_EVERY } from './soviet.js';
+import { Emblem, Siberia, SIBERIA_STREAK } from './soviet.js';
 
 // 奥の端でのレーン幅(手前を 1 とした比)
 const FAR_SCALE = 0.14;
@@ -99,7 +99,6 @@ export class Renderer {
         continue;
       }
       this.comboBump = 1;
-      if (e.combo % COMBO_BURST_EVERY === 0) this.emblem.burst();
       const x = this.laneX(e.lane + 0.5, 1);
       const color = GRADE_COLORS[e.grade];
       const strong = e.grade === 'PERFECT';
@@ -152,10 +151,22 @@ export class Renderer {
     const pulse = now > 0 && lastBeat >= 0 ? Math.exp(-(now - beats[lastBeat]) * 7) : 0;
 
     this.drawBackground(now, pulse);
-    // レーンの奥、消失点のあたりに鎌と金槌を置く
-    const emblemSize = Math.min(W, H) * 0.24;
-    this.emblem.draw(ctx, this.cx, this.horizonY + emblemSize * 0.05, emblemSize, pulse);
     this.drawStage(state, pulse);
+    // 鎌と金槌: 普段はレーンの奥、コンボが続くほど大きくなって画面中央へ。
+    // ステージの床より手前・ノーツより奥に描いて、大きくなっても譜面は隠さない
+    const short = Math.min(W, H);
+    this.emblem.draw(
+      ctx,
+      {
+        cx: this.cx,
+        topY: this.horizonY + short * 0.02,
+        centerY: this.horizonY + (this.judgeY - this.horizonY) * 0.36,
+        minSize: short * 0.22,
+        maxSize: short * 0.55,
+      },
+      pulse,
+      now,
+    );
     this.drawNotes(state);
     this.drawEffects();
     this.drawHud(state);
