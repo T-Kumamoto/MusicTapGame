@@ -13,38 +13,42 @@ export const SIBERIA_STREAK = 8;
 export const SIBERIA_MISS_RATE = 0.3;
 const SIBERIA_SECONDS = 2.6;
 
-// 100×100 の枠に描く鎌と金槌
-function emblemPath() {
-  const p = new Path2D();
+// 100×100 の枠に描く鎌と金槌。部品ごとに別のパスにする
+// (一つのパスにまとめると、回る向きが逆の部品が重なった所が穴になる)
+function emblemParts() {
   const rad = (deg) => (deg * Math.PI) / 180;
+  const polygon = (pts) => {
+    const path = new Path2D();
+    pts.forEach(([x, y], i) => (i ? path.lineTo(x, y) : path.moveTo(x, y)));
+    path.closePath();
+    return path;
+  };
+
   // 鎌の刃: 左下の柄から下・右・上を回って左上の先端へ。先端ほど細くなる三日月
-  p.arc(52, 48, 34, rad(135), rad(225), true);
-  p.arc(47, 44, 27, rad(225), rad(135), false);
-  p.closePath();
-  // 鎌の柄
-  p.moveTo(23, 64);
-  p.lineTo(32, 72);
-  p.lineTo(19, 86);
-  p.lineTo(10, 78);
-  p.closePath();
-  // 金槌の柄(左上から右下へ)
-  p.moveTo(31, 38);
-  p.lineTo(38, 31);
-  p.lineTo(84, 77);
-  p.quadraticCurveTo(84, 84, 77, 84);
-  p.closePath();
-  // 金槌の頭(柄に直交する)
-  p.moveTo(17, 36);
-  p.lineTo(36, 17);
-  p.lineTo(45, 26);
-  p.lineTo(26, 45);
-  p.closePath();
-  return p;
+  const blade = new Path2D();
+  blade.arc(52, 48, 34, rad(135), rad(225), true);
+  blade.arc(47, 44, 27, rad(225), rad(135), false);
+  blade.closePath();
+
+  // 金槌の柄(左上から右下へ)。端は丸める
+  const handle = new Path2D();
+  handle.moveTo(31, 38);
+  handle.lineTo(38, 31);
+  handle.lineTo(84, 77);
+  handle.quadraticCurveTo(84, 84, 77, 84);
+  handle.closePath();
+
+  return [
+    blade,
+    polygon([[23, 64], [32, 72], [19, 86], [10, 78]]), // 鎌の柄
+    handle,
+    polygon([[17, 36], [36, 17], [45, 26], [26, 45]]), // 金槌の頭(柄に直交する)
+  ];
 }
 
 export class Emblem {
   constructor() {
-    this.path = typeof Path2D === 'function' ? emblemPath() : null;
+    this.parts = typeof Path2D === 'function' ? emblemParts() : null;
     this.glow = 0;
     this.flash = 0;
   }
@@ -67,7 +71,7 @@ export class Emblem {
   }
 
   draw(ctx, cx, cy, size, pulse) {
-    if (!this.path) return;
+    if (!this.parts) return;
     const g = this.glow;
     const f = this.flash;
     const scale = size / 100;
@@ -115,7 +119,7 @@ export class Emblem {
       ctx.shadowBlur = (6 + 22 * Math.max(g * (0.7 + 0.3 * pulse), f)) * scale;
     }
     ctx.fillStyle = fill;
-    ctx.fill(this.path);
+    for (const part of this.parts) ctx.fill(part);
     ctx.restore();
   }
 }
